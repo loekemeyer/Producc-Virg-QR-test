@@ -288,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* ================= VERSION (unica fuente de verdad) ================= */
-  const LOCAL_VERSION = "v1.8.58";
+  const LOCAL_VERSION = "v1.8.59";
 
   /* ================= KEYS STORAGE ================= */
   const APP_TAG = "_Cervantes";
@@ -1563,6 +1563,14 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // GATE DE FICHADA QR (v1.8.59): si el operario todavia no ficho su ingreso hoy,
+    // se le pide escanear el QR ANTES de entrar. Si ya ficho (verificado contra
+    // Supabase o recordado localmente), o no se puede verificar (red/correo), entra
+    // normal — nunca se traba el turno. El gate llama a _enterOptions() al pasar.
+    fichadaGate(leg, function () { _enterOptions(leg); });
+  }
+
+  function _enterOptions(leg) {
     legajoScreen.classList.add("hidden");
     optionsScreen.classList.remove("hidden");
     renderOptions();
@@ -1571,6 +1579,233 @@ document.addEventListener("DOMContentLoaded", () => {
     // (v1.8.47) Si quedo un flujo Rotura Matriz a medias (ej: se actualizo con F5),
     // retomarlo: reexige la cantidad si no se cargo, o reabre Cambiar Matriz.
     resumirFlujoRMSiHace(leg);
+  }
+
+  /* ==========================================================================
+     GATE DE FICHADA QR (v1.8.59) — mismo sistema que Virgilio (schema FichadaQR).
+     El operario ficha su INGRESO escaneando el QR rotativo de la pantalla del
+     trabajo. Acá (a) preguntamos "¿ya ficho hoy?" con la RPC de solo-lectura
+     fichadaqr_ficho_hoy (por correo y/o legajo — el server resuelve el legajo
+     contra planify.employees), y (b) al escanear mandamos {token, email} a la
+     Edge Function fichada-qr-fichar (valida firma + vencimiento + habilitado +
+     1/dia y registra). Fail-open: sin correo/red no se traba el turno.
+     ========================================================================== */
+  const FICHOHOY_RPC = SUPABASE_URL + "/rest/v1/rpc/fichadaqr_ficho_hoy";
+  const FICHAR_FN    = SUPABASE_URL + "/functions/v1/fichada-qr-fichar";
+  const FICHADO_LOCAL_KEY = "cerv_ficho_qr";   // {day, key} → ya ficho hoy (isolado de Virgilio)
+  let _fichadaGateCont = null, _fichadaEmail = null, _fichadaFichoKey = null;
+  let _fqrStream = null, _fqrDetector = null, _fqrScanning = false, _fqrTimer = null;
+  let _fqrCanvas = null, _fqrCtx = null, _jsqrLoading = null;
+
+  function _fichoLocalHoy(key) {
+    try {
+      if (!key) return false;
+      const o = JSON.parse(localStorage.getItem(FICHADO_LOCAL_KEY) || "null");
+      return !!(o && o.day === dayKeyAR() && o.key === key);
+    } catch (_e) { return false; }
+  }
+  function _marcarFichadoLocal(key) {
+    try { if (key) localStorage.setItem(FICHADO_LOCAL_KEY, JSON.stringify({ day: dayKeyAR(), key: key })); } catch (_e) {}
+  }
+
+  async function _fichoHoyRemoto(email, legajo) {
+    try {
+      const r = await fetch(FICHOHOY_RPC, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+        body: JSON.stringify({ p_email: email || "", p_legajo: legajo || "" })
+      });
+      if (!r.ok) return null;
+      const d = await r.json();   // {ficho, hora, correo}
+      if (d && typeof d === "object") return { ficho: !!d.ficho, hora: d.hora || null, correo: d.correo || null };
+      return null;
+    } catch (_e) { return null; }
+  }
+
+  async function fichadaGate(legajo, cont) {
+    _fichadaGateCont = cont;
+    const emp = empleadosMap.get(legajo) || {};
+    const email0 = emp.email ? String(emp.email).toLowerCase().trim() : null;
+    const localKey = email0 || ("leg:" + legajo);
+    if (_fichoLocalHoy(localKey)) { _fichadaGateCont = null; return cont(); }
+    const res = await _fichoHoyRemoto(email0, legajo);
+    const emailFichar = (res && res.correo) || email0 || null;
+    _fichadaEmail = emailFichar ? String(emailFichar).toLowerCase().trim() : null;
+    if (res === null) { _fichadaGateCont = null; return cont(); }              // sin red → fail-open
+    if (res.ficho) { _marcarFichadoLocal(localKey); _fichadaGateCont = null; return cont(); }
+    if (!_fichadaEmail) { _fichadaGateCont = null; return cont(); }            // sin correo → fail-open
+    _fichadaFichoKey = localKey;
+    openFichadaScanner(_fichadaEmail);
+  }
+
+  /* ─────────── Lector de QR (cámara) ─────────── */
+  function _fqrMsg(t, cls) { const m = $("fqrMsg"); if (m) { m.textContent = t || ""; m.className = "fqr-msg" + (cls ? " " + cls : ""); } }
+  function _fqrHide(id) { const e = $(id); if (e) e.classList.add("fqr-hidden"); }
+  function _fqrShow(id) { const e = $(id); if (e) e.classList.remove("fqr-hidden"); }
+
+  function _ensureJsQR() {
+    if (window.jsQR) return Promise.resolve(true);
+    if (_jsqrLoading) return _jsqrLoading;
+    _jsqrLoading = new Promise(function (res) {
+      const s = document.createElement("script");
+      s.src = "jsqr.min.js?v=" + String(LOCAL_VERSION).replace(/^v/, "");
+      s.onload = function () { res(!!window.jsQR); };
+      s.onerror = function () { res(false); };
+      document.head.appendChild(s);
+    });
+    return _jsqrLoading;
+  }
+
+  function _extractToken(text) {
+    if (!text) return null;
+    const m = String(text).match(/[?&]t=([^&\s]+)/);
+    if (m) { try { return decodeURIComponent(m[1]); } catch (_e) { return m[1]; } }
+    const s = String(text).trim();
+    if (/^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(s)) return s;
+    return null;
+  }
+
+  async function openFichadaScanner(email) {
+    $("fqrWho").textContent = email || "";
+    $("fqrSub").textContent = "Apunta al QR de la pantalla de fichada del trabajo.";
+    _fqrShow("fqrFrame"); _fqrHide("fqrBadge");
+    _fqrHide("fqrDone"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
+    _fqrMsg("Iniciando cámara…");
+    $("fichadaScan").classList.add("show");
+
+    if (!_fqrCanvas) { _fqrCanvas = document.createElement("canvas"); _fqrCtx = _fqrCanvas.getContext("2d", { willReadFrequently: true }); }
+
+    _fqrDetector = null;
+    try {
+      if ("BarcodeDetector" in window) {
+        let fmts = null;
+        try { fmts = await window.BarcodeDetector.getSupportedFormats(); } catch (_e) {}
+        if (!fmts || fmts.indexOf("qr_code") !== -1) _fqrDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
+      }
+    } catch (_e) { _fqrDetector = null; }
+    if (!_fqrDetector) {
+      const ok = await _ensureJsQR();
+      if (!ok) { _fqrMsg("No pudimos cargar el lector. Fichá desde tu celular escaneando el QR.", "bad"); _fqrShow("fqrBypass"); return; }
+    }
+    _fqrStartCamera();
+  }
+
+  async function _fqrStartCamera() {
+    const video = $("fqrVideo");
+    try {
+      _fqrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+    } catch (e) {
+      _fqrMsg("No pudimos abrir la cámara. Dale permiso, o fichá desde tu celular.", "bad");
+      _fqrShow("fqrRetry"); _fqrShow("fqrBypass");
+      return;
+    }
+    video.srcObject = _fqrStream;
+    try { await video.play(); } catch (_e) {}
+    _fqrMsg("Buscando el QR…");
+    _fqrScanning = true;
+    _fqrLoop();
+  }
+
+  async function _fqrLoop() {
+    if (!_fqrScanning) return;
+    const video = $("fqrVideo");
+    let code = null;
+    if (video && video.readyState >= 2 && video.videoWidth) {
+      try {
+        if (_fqrDetector) {
+          const bars = await _fqrDetector.detect(video);
+          if (bars && bars.length) code = bars[0].rawValue;
+        } else if (window.jsQR) {
+          const w = Math.min(video.videoWidth, 640);
+          const h = Math.round(video.videoHeight * (w / video.videoWidth));
+          _fqrCanvas.width = w; _fqrCanvas.height = h;
+          _fqrCtx.drawImage(video, 0, 0, w, h);
+          const img = _fqrCtx.getImageData(0, 0, w, h);
+          const r = window.jsQR(img.data, w, h, { inversionAttempts: "dontInvert" });
+          if (r) code = r.data;
+        }
+      } catch (_e) {}
+    }
+    if (code) {
+      const tok = _extractToken(code);
+      if (tok) { _fqrScanning = false; return _fqrSubmit(tok); }
+    }
+    if (_fqrScanning) _fqrTimer = setTimeout(_fqrLoop, 130);
+  }
+
+  async function _fqrSubmit(tok) {
+    _fqrMsg("Registrando fichada…");
+    let d = null;
+    try {
+      const r = await fetch(FICHAR_FN, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
+        body: JSON.stringify({ token: tok, email: _fichadaEmail })
+      });
+      d = await r.json();
+    } catch (e) {
+      _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrResume(); return;
+    }
+    if (d && d.ok) { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("¡Fichada registrada!", d.hora, false); return; }
+    if (d && d.error === "ya_ficho") { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("Ya habías fichado hoy", d.hora, true); return; }
+    if (d && (d.error === "token_vencido" || d.error === "token_usado" || d.error === "token_invalido")) {
+      _fqrMsg("El código venció. Apuntá al QR actual de la pantalla.", "warn"); _fqrResume(); return;
+    }
+    if (d && d.error === "no_habilitado") {
+      _fqrStop();
+      _fqrMsg("Tu correo (" + (_fichadaEmail || "—") + ") no está habilitado para fichar. Avisá a administración.", "bad");
+      _fqrShow("fqrBypass"); _fqrHide("fqrRetry"); return;
+    }
+    _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrResume();
+  }
+
+  function _fqrResume() {
+    if (!_fqrStream) { _fqrShow("fqrRetry"); return; }
+    _fqrScanning = true;
+    _fqrLoop();
+  }
+
+  function _fqrSuccess(title, hora, isWarn) {
+    _fqrStop();
+    _fqrHide("fqrFrame");
+    const b = $("fqrBadge");
+    b.className = "fqr-badge " + (isWarn ? "warn" : "ok");
+    b.textContent = isWarn ? "⏱" : "✓";
+    _fqrShow("fqrBadge");
+    _fqrMsg(title + (hora ? " · " + hora : ""), isWarn ? "warn" : "ok");
+    _fqrShow("fqrDone");
+    _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrCancel");
+  }
+
+  function _fqrStop() {
+    _fqrScanning = false;
+    if (_fqrTimer) { clearTimeout(_fqrTimer); _fqrTimer = null; }
+    try { if (_fqrStream) _fqrStream.getTracks().forEach(function (t) { t.stop(); }); } catch (_e) {}
+    _fqrStream = null;
+    const v = $("fqrVideo"); if (v) { try { v.pause(); } catch (_e) {} v.srcObject = null; }
+  }
+
+  function _fqrCloseModal() { _fqrStop(); $("fichadaScan").classList.remove("show"); }
+
+  function fichadaScanRetry() {
+    _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrShow("fqrFrame"); _fqrHide("fqrBadge");
+    _fqrMsg("Iniciando cámara…");
+    _fqrStartCamera();
+  }
+  function fichadaScanContinue() {
+    _fqrCloseModal();
+    const cont = _fichadaGateCont; _fichadaGateCont = null;
+    if (typeof cont === "function") cont();
+  }
+  function fichadaScanBypass() {
+    if (!confirm("Vas a entrar sin fichar el ingreso por QR. ¿Continuar igual?")) return;
+    _fqrCloseModal();
+    const cont = _fichadaGateCont; _fichadaGateCont = null;
+    if (typeof cont === "function") cont();
+  }
+  function fichadaScanClose() {
+    _fqrCloseModal();
+    _fichadaGateCont = null;
   }
 
   function backToLegajo() {
@@ -3219,6 +3454,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* ================= EVENTOS ================= */
   btnContinuar.addEventListener("click", goToOptions);
+  // Botones del lector de fichada QR (v1.8.59).
+  $("fqrRetry")?.addEventListener("click", fichadaScanRetry);
+  $("fqrDone")?.addEventListener("click", fichadaScanContinue);
+  $("fqrBypass")?.addEventListener("click", fichadaScanBypass);
+  $("fqrCancel")?.addEventListener("click", fichadaScanClose);
   btnBackTop.addEventListener("click", backToLegajo);
   btnBackLabel.addEventListener("click", backToLegajo);
   btnResetSelection.addEventListener("click", resetSelection);

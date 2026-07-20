@@ -178,3 +178,25 @@ button{
 .adv-cont-ok:hover{background:#b91c1c;}
 
 /* (v1.8.39) Estilos de botones de TEST eliminados. */
+
+/* ── Gate de FICHADA QR: lector de QR de ingreso (v1.8.59) ── */
+#fichadaScan{ display:none; position:fixed; inset:0; z-index:1400; background:#0b1220; color:#e8f0ef; overflow:auto; }
+#fichadaScan.show{ display:flex; flex-direction:column; }
+.fqr-head{ padding:16px 16px 6px; text-align:center; }
+.fqr-head h1{ font-size:20px; font-weight:800; margin:0 0 4px; color:#fff; }
+.fqr-head p{ font-size:13.5px; color:#94a5a4; margin:0; line-height:1.4; }
+.fqr-who{ font-size:12.5px; color:#7fdce0; font-weight:700; margin-top:6px; word-break:break-all; }
+.fqr-stage{ flex:1 1 auto; display:flex; align-items:center; justify-content:center; padding:14px; }
+.fqr-frame{ position:relative; width:min(78vw,320px); aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#000; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+.fqr-frame video{ width:100%; height:100%; object-fit:cover; display:block; }
+.fqr-frame .fqr-reticle{ position:absolute; inset:12%; border:3px solid rgba(127,220,224,.9); border-radius:14px; box-shadow:0 0 0 100vmax rgba(2,6,23,.35); pointer-events:none; }
+.fqr-msg{ min-height:22px; text-align:center; font-size:14px; font-weight:700; padding:0 18px 6px; }
+.fqr-msg.ok{ color:#34d399; } .fqr-msg.warn{ color:#f0a44a; } .fqr-msg.bad{ color:#f87171; }
+.fqr-actions{ padding:6px 18px 26px; display:flex; flex-direction:column; gap:10px; max-width:420px; width:100%; margin:0 auto; }
+.fqr-btn{ width:100%; border:none; border-radius:12px; font-size:15px; font-weight:800; padding:14px; cursor:pointer; }
+.fqr-btn.prim{ background:#0d7d84; color:#fff; }
+.fqr-btn.sec{ background:transparent; color:#94a5a4; font-weight:700; font-size:13.5px; padding:8px; }
+.fqr-btn:disabled{ opacity:.5; cursor:default; }
+.fqr-badge{ width:78px; height:78px; border-radius:50%; display:grid; place-items:center; margin:10px auto; font-size:40px; }
+.fqr-badge.ok{ background:#12241c; color:#34d399; } .fqr-badge.warn{ background:#241a10; color:#f0a44a; } .fqr-badge.bad{ background:#251316; color:#f87171; }
+.fqr-hidden{ display:none !important; }
