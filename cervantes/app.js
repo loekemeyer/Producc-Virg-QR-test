@@ -1665,6 +1665,13 @@ document.addEventListener("DOMContentLoaded", () => {
     return null;
   }
 
+  /* QR ESTÁTICO de fichada (sin token que vence): la presencia la ancla la IP
+     del WiFi del trabajo (chequeo server-side). Reconocemos el QR fijo de fichar. */
+  function _esFichadaEstatica(text) {
+    const s = String(text || "");
+    return /fichar/i.test(s) || /[?&]e=1(?:[&#]|$)/.test(s);
+  }
+
   async function openFichadaScanner(email) {
     $("fqrWho").textContent = email || "";
     $("fqrSub").textContent = "Apunta al QR de la pantalla de fichada del trabajo.";
@@ -1728,11 +1735,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (code) {
       const tok = _extractToken(code);
-      if (tok) { _fqrScanning = false; return _fqrSubmit(tok); }
+      if (tok) { _fqrScanning = false; return _fqrSubmit(tok); }           // rotativo (con token)
+      if (_esFichadaEstatica(code)) { _fqrScanning = false; return _fqrSubmit(null); }  // estático (IP)
     }
     if (_fqrScanning) _fqrTimer = setTimeout(_fqrLoop, 130);
   }
 
+  /* Con `tok` → modo rotativo (token que vence). Sin `tok` (QR estático) → el
+     server valida por la IP del WiFi del trabajo. */
   async function _fqrSubmit(tok) {
     _fqrMsg("Registrando fichada…");
     let d = null;
@@ -1740,7 +1750,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const r = await fetch(FICHAR_FN, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
-        body: JSON.stringify({ token: tok, email: _fichadaEmail })
+        body: JSON.stringify(tok ? { token: tok, email: _fichadaEmail } : { email: _fichadaEmail })
       });
       d = await r.json();
     } catch (e) {
@@ -1750,6 +1760,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (d && d.error === "ya_ficho") { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("Ya habías fichado hoy", d.hora, true); return; }
     if (d && (d.error === "token_vencido" || d.error === "token_usado" || d.error === "token_invalido")) {
       _fqrMsg("El código venció. Apuntá al QR actual de la pantalla.", "warn"); _fqrResume(); return;
+    }
+    if (d && d.error === "ip_no_permitida") {
+      _fqrStop();
+      _fqrMsg("Para fichar tenés que estar conectado al WiFi del trabajo (no datos móviles).", "bad");
+      _fqrShow("fqrRetry"); _fqrShow("fqrBypass"); return;
+    }
+    if (d && d.error === "ip_no_configurada") {
+      _fqrStop();
+      _fqrMsg("Falta configurar la IP del trabajo para la fichada. Avisá a administración.", "bad");
+      _fqrShow("fqrBypass"); return;
     }
     if (d && d.error === "no_habilitado") {
       _fqrStop();
