@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ingreso Virgilio</title>
+    <link rel="stylesheet" href="fichada.css" />
+  </head>
+  <body>
+    <main class="form-wrap">
+      <article class="form-card form-card--title">
+        <div class="form-card__accent"></div>
+        <div class="form-card__body">
+          <h1 class="form-title">Ingreso Virgilio</h1>
+          <p class="form-account">
+            <span id="user-email">no-iniciado@correo.com</span>
+            <button type="button" id="change-account" class="link">Cambiar de cuenta</button>
+          </p>
+          <p class="form-required-note">Completá tu correo y tocá Registrar Ingreso.</p>
+        </div>
+      </article>
+
+      <form id="fichada-form" autocomplete="off" novalidate>
+        <article class="form-card">
+          <div class="form-card__body">
+            <label class="question-label" for="email-input">
+              Correo electrónico <span class="req">*</span>
+            </label>
+            <input
+              id="email-input"
+              type="email"
+              class="text-input"
+              placeholder="tu.correo@ejemplo.com"
+              required
+            />
+            <label class="checkbox-row">
+              <input type="checkbox" id="remember-email" />
+              <span>Recordar este correo en este dispositivo</span>
+            </label>
+            <p class="error-msg" id="email-error" hidden>Ingresá un correo válido.</p>
+          </div>
+        </article>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="submit-btn">Registrar Ingreso</button>
+          <button type="button" class="btn-link" id="clear-btn">Borrar formulario</button>
+        </div>
+
+        <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+      </form>
+
+      <footer class="form-footer">
+        <p>Tu ingreso queda registrado en el sistema Virgilio.</p>
+      </footer>
+    </main>
+
+    <script src="fichada-config.js"></script>
+    <script src="fichada-totp.js"></script>
+    <script src="fichada.js"></script>
+  </body>
+</html>

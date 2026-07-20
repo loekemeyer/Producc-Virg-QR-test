@@ -1,0 +1,27 @@
+-- =====================================================================
+--  ppp_sin_zona.sql — Alerta "pedidos en la PPP sin zona" (v4.84)
+--
+--  Cuando llega un pedido a PPP_Programacion_Diaria SIN zona cargada
+--  (coalesce(btrim(zona),'')=''), no se puede rutear ni asignar camión.
+--  reporte_agentes_ppp_sin_zona() avisa por DOS vías:
+--    • Tablero Agentes → reporte_agentes (categoria 'ppp_sin_zona', severidad alta)
+--    • Telegram → tg_enqueue, un digest con los NP/cliente/dirección sin zona.
+--      Dedup por el SET de NPs sin zona del día (md5) → re-avisa sólo si cambia el set,
+--      no spamea cada 2 h.
+--
+--  Es SERVER-SIDE (corre en el cron de agentes, jobid 14, cada 2 h) → salta aunque
+--  nadie abra el monitor PPP. Distinto del PPE client-emit (notificar_ppp_error_telegram),
+--  que sólo cuenta sin-zona cuando alguien abre el monitor.
+--
+--  Enganche en el cron de agentes (después de los demás reporte_agentes_*):
+--    select cron.schedule('generar-reporte-agentes','0 */2 * * *',
+--      'select public.generar_reporte_agentes(); ...; select public.reporte_agentes_ppp_sin_zona();');
+--
+--  Cliente: categoria 'ppp_sin_zona' agregada al array CATS de agtRender (index.html).
+--
+--  ⚠ SEGURIDAD: SECURITY DEFINER + manda Telegram → NO ejecutable por la anon key.
+--  El cron corre como postgres (conserva EXECUTE). Migración reporte_agentes_ppp_sin_zona:
+--    revoke execute on function public.reporte_agentes_ppp_sin_zona() from public, anon, authenticated;
+--    grant  execute on function public.reporte_agentes_ppp_sin_zona() to service_role;
+--  Cuerpo completo aplicado por migración.
+-- =====================================================================

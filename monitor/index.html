@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor Virgilio</title>
+<!-- URL limpia para colgar una smart TV: <repo>/monitor
+     Redirige al monitor en modo TV (la app lo abre solo con ?monitor=tv).
+     Rutas RELATIVAS (../) para que funcione en cualquier repo/Pages sin editar.
+     Cache-buster (?v=<timestamp>) para que la TV vieja baje SIEMPRE el index.html
+     fresco y no quede pegada a una versión cacheada.
+     Meta-refresh (2 s) como fallback sin JS; el JS corre primero y es el que bustea. -->
+<meta http-equiv="refresh" content="2; url=../?monitor=tv">
+<script>location.replace("../?monitor=tv&v=" + Date.now().toString(36));</script>
+</head>
+<body style="margin:0;font-family:system-ui,Arial,sans-serif;background:#0b1220;color:#cbd5e1;padding:24px">
+  Abriendo el monitor…
+  <a style="color:#60a5fa" href="../?monitor=tv">si no abre solo, tocá acá</a>.
+</body>
+</html>

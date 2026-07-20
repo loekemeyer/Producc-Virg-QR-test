@@ -1,0 +1,54 @@
+-- =====================================================================
+--  reconciliar_pipeline_stock.sql — Pipeline de stock SERVER-SIDE (v4.99)
+--
+--  PROBLEMA (root cause): "Pickeados" y "A facturar" mostraban 0 aunque
+--  hubiera pedidos pickeados/armados, y la GÓNDOLA nunca bajaba por el picking.
+--  TODO eso era UN SOLO bug:
+--    • El CHECK `Movimientos_Stock_deposito_check` NO incluía
+--      `separar_pedidos`, `a_facturar` ni `excedente` (solo a_guardar/
+--      terminado/racks/insumos).
+--    • El cliente `stockBajaPicking` arma el picking como UN batch
+--      `stockMove([terminado−, separar_pedidos+])` → un solo POST a PostgREST.
+--    • La fila `separar_pedidos` violaba el CHECK → PostgREST rechazaba TODO
+--      el batch con HTTP 400.
+--    • `stockMove` se TRAGA los 4xx (`if (r.ok || (status>=400 && <500)) return`)
+--      → fallo silencioso: ni se descontaba góndola ni se llenaba separar.
+--  Además los equipos de picking corren una app vieja (TWA) que ni siquiera
+--  intentaba el pipeline.
+--
+--  FIX (este archivo / migraciones aplicadas):
+--   1) `movimientos_stock_deposito_check_pipeline`: el CHECK ahora permite
+--      terminado, excedente, separar_pedidos, a_facturar, a_guardar, racks, insumos.
+--      (Desbloquea el pipeline tanto del cliente como del server.)
+--   2) `reconciliar_pipeline_stock()` (migración `reconciliar_pipeline_stock`):
+--      replica las 3 etapas del cliente, pero del lado del server, idempotente:
+--        ETAPA 1 (PKC/TP): separar_pedidos(+picked) y góndola(−picked). Góndola
+--          SÓLO si no fue descontada antes (no re-descuenta tandas ya seedeadas).
+--        ETAPA 2 (TAP):    mueve el neto de separar_pedidos → a_facturar.
+--        ETAPA 3 (factura): saca de a_facturar cuando la tanda está 100%
+--          facturada (todos los NP de la PPP en Facturacion_NP).
+--      Dedup por la existencia del movimiento (separar_pedidos / tipo='separado'
+--      / tipo='facturado' por ref=tanda). Comparte los `tipo` con el cliente, así
+--      si una app nueva sí corre el pipeline, los guards evitan doble conteo.
+--      Sólo procesa tandas con actividad POST-cutoff (Stock_Config.cutoff_ts);
+--      lo anterior ya está en el snapshot `inicial`. SECURITY DEFINER, revoke
+--      anon/authenticated, grant service_role. Nunca lanza (devuelve texto).
+--
+--  CRON: jobid 22 `reconciliar-pipeline-stock`, `*/10 * * * *` (cada 10 min).
+--    select cron.schedule('reconciliar-pipeline-stock','*/10 * * * *',
+--      $$select public.reconciliar_pipeline_stock();$$);
+--    (Registros_Produccion_Virgilio es chico → el scan cada 10 min es trivial.)
+--    Mantiene Pickeados/A facturar al día desde los eventos sin depender de la
+--    app vieja. El pipeline del cliente queda como "fast path" (instantáneo); el
+--    cron es la red de seguridad para equipos con app vieja.
+--
+--  BACKLOG RECONCILIADO (29/06): 6 tandas en vuelo, post-cutoff:
+--    separar_pedidos (Pickeados) = 627  → C58C 108 + C58E 44 + C59C 475
+--    a_facturar      (A facturar) = 442 → C58A 115 + C58B 247 + C58D 80
+--    góndola: −634 sólo de las 3 sin descuento previo (C58A/C58E/C59C);
+--             C58B/C58C/C58D ya tenían el descuento del seed manual.
+--    Góndola quedó con sólo 2 artículos en −5 (despreciable).
+--
+--  La definición viva de la función está en la migración homónima en Supabase.
+--  Este archivo es la documentación del diseño (convención de sql/).
+-- =====================================================================

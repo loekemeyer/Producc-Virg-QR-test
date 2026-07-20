@@ -1,0 +1,7 @@
+# Estado local del agente (qué PDF ya procesó) — no va al repo
+nc_procesados.json
+# Nunca subir secretos / config local con la secret key
+.env
+*.local
+# El .bat de arranque lleva la sb_secret_ adentro — SOLO en la PC, jamás al repo
+*.bat

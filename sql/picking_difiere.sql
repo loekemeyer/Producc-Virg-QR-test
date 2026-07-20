@@ -1,0 +1,36 @@
+-- =====================================================================
+--  picking_difiere.sql — Alerta "el picking no coincide con la mesa" (v4.92)
+--
+--  En el paso "Separar por NP" del wizard Completar (AP/TAP), el armador puede
+--  reportar que un artículo NO coincide con lo que marcó el picking (EP/TP):
+--    • "de más"  → en la mesa sobran cajas (el picking bajó de más).
+--    • "de menos"→ en la mesa faltan (el picking marcó completo pero bajó menos);
+--                  + se le pregunta si hay en góndola para completar (si/no).
+--  NO es responsabilidad del AP/TAP: sólo reporta y sigue (no se lo frena).
+--
+--  El cliente persiste el evento como opcode **NPD** en Registros_Produccion_Virgilio:
+--    texto = "NP|cod|tipo|gond|qty|sale|tanda"
+--      tipo = mas|menos · gond = si|no|- · qty = cajas de diferencia · sale = lo
+--      que marcó el picking.
+--  Stock (cliente, stockMove): SÓLO "menos + gond=no" → devuelve `qty` a góndola
+--  (deposito 'terminado', tipo 'ajuste', ref 'picking_difiere') para no quedar
+--  negativo (el picking descontó algo que no estaba). "menos + si" NO descuenta
+--  (ya lo descontó el picking). "más" no toca stock (se vuelve a guardar a mano).
+--
+--  reporte_agentes_picking_difiere() (SERVER-SIDE) avisa por DOS vías:
+--    • Tablero Agentes → reporte_agentes (categoria 'picking_difiere', severidad media)
+--    • Telegram → tg_enqueue, digest de los NPD del día (AR). Dedup por el SET de
+--      client_id del día (md5) → re-avisa sólo si aparece uno nuevo, no spamea cada 2 h.
+--
+--  Engancha al cron de agentes (jobid 14, jobname 'generar-reporte-agentes',
+--  cada 2 h), después de los demás reporte_agentes_*:
+--    select cron.schedule('generar-reporte-agentes','0 */2 * * *',
+--      '... ; select public.reporte_agentes_ppp_sin_zona(); select public.reporte_agentes_picking_difiere();');
+--
+--  Cliente: categoria 'picking_difiere' agregada al array CATS de agtRender (index.html).
+--
+--  ⚠ SEGURIDAD: SECURITY DEFINER + manda Telegram → NO ejecutable por la anon key.
+--    revoke execute on function public.reporte_agentes_picking_difiere() from public, anon, authenticated;
+--    grant  execute on function public.reporte_agentes_picking_difiere() to service_role;
+--  Cuerpo completo aplicado por la migración `reporte_agentes_picking_difiere`.
+-- =====================================================================

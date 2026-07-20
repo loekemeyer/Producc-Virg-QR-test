@@ -1,0 +1,9 @@
+# Android / TWA — NUNCA subir claves de firma ni artefactos de build
+*.keystore
+*.jks
+android.keystore
+app-release-signing.keystore
+*.aab
+*.apk
+android-twa/
+node_modules/

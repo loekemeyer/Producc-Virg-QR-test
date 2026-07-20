@@ -1,0 +1,40 @@
+-- =====================================================================
+--  falta_llego.sql — Alerta "llegó un faltante, completá antes de facturar" (v4.98)
+--
+--  Caso: un pedido se armó (AP/TAP) con un FALTANTE en algún artículo (lo que
+--  faltó al pickear, registrado por el wizard Completar en Entregas_Virgilio.
+--  cajas_falto). Después, esa mercadería LLEGA por recepción (RT) y queda en el
+--  depósito 'a_guardar'. Si el pedido todavía NO se facturó, conviene agarrar lo
+--  que llegó y COMPLETAR el pedido antes de que Marianela lo facture.
+--
+--  reporte_agentes_falta_llego() cruza:
+--    • LLEGADAS: Movimientos_Stock deposito='a_guardar', saldo>0 (respeta el
+--      cutoff de Stock_Config, como las demás cat. de stock).
+--    • FALTANTES por pedido: Entregas_Virgilio.cajas_falto>0, de NPs que NO están
+--      en Facturacion_NP (= sin facturar) y con fecha_salida reciente (>= hoy−3, AR).
+--    • Match por código normalizado (upper + sin ceros a la izquierda).
+--  Avisa por DOS vías (sólo si hay match):
+--    • Tablero Agentes → reporte_agentes (categoria 'falta_llego', severidad alta).
+--    • Telegram → tg_enqueue, digest de los matches. Dedup por el SET de (np|cod)
+--      del día (md5) → re-avisa 1 vez/día mientras el faltante siga en 'a guardar'
+--      y el pedido sin facturar (recordatorio); se apaga solo al completar (sale de
+--      'a guardar') o al facturar (entra a Facturacion_NP).
+--
+--  Engancha al cron de agentes (jobid 14, cada 2 h), después de los demás
+--  reporte_agentes_*:
+--    select cron.schedule('generar-reporte-agentes','0 */2 * * *',
+--      '... ; select public.reporte_agentes_picking_difiere(); select public.reporte_agentes_falta_llego();');
+--
+--  Cliente: categoria 'falta_llego' agregada al array CATS de agtRender (index.html).
+--
+--  ⚠ OJO con tipos: Entregas_Virgilio.fecha_salida es TEXT ('YYYY-MM-DD…') → se
+--  compara como texto con left(...,10) (NO castear a date directo). Si se mete en
+--  un date directo, el error lo tapa el `exception when others` y la función nunca
+--  alerta (pasó en la 1ª versión).
+--
+--  ⚠ SEGURIDAD: SECURITY DEFINER + manda Telegram → NO ejecutable por la anon key.
+--    revoke execute on function public.reporte_agentes_falta_llego() from public, anon, authenticated;
+--    grant  execute on function public.reporte_agentes_falta_llego() to service_role;
+--  Cuerpo completo aplicado por las migraciones `reporte_agentes_falta_llego` (+
+--  `reporte_agentes_falta_llego_fix_fecha`).
+-- =====================================================================

@@ -1,0 +1,37 @@
+-- =====================================================================
+--  autozona.sql — Zona automática en la PPP desde el barrio (v4.99, server-side)
+--
+--  Antes la ZONA de cada pedido se cargaba a mano en el Excel y se levantaba a
+--  PPP_Programacion_Diaria. Ahora Supabase la deriva SOLA del barrio: el Excel
+--  puede dejar la columna zona en blanco.
+--
+--  Dato que lo habilita: el barrio determina la zona de forma LIMPIA (34 barrios
+--  en el histórico, 0 ambiguos — ningún barrio cae en 2 zonas).
+--
+--  Componentes:
+--   • Tabla public."Zonas_Barrios" (barrio_norm PK · zona · creado): mapeo
+--     barrio→zona (la "fuente de verdad"). RLS on, anon SELECT (read-only).
+--   • public._norm_barrio(text) IMMUTABLE: normaliza el barrio para el match =
+--     minúsculas + SIN TILDES (translate áéíóúü→aeiouu) + espacios colapsados.
+--     ⚠ Las tildes importan: "Esteban Echeverría" vs "Esteban Echeverria" deben
+--     matchear (si no, no clasifica → queda sin zona).
+--   • public.ppp_autozona() + trigger trg_ppp_autozona BEFORE INSERT OR UPDATE en
+--     PPP_Programacion_Diaria: si el pedido llega SIN zona y CON barrio, busca el
+--     barrio normalizado en Zonas_Barrios y completa new.zona. NO pisa una zona
+--     ya cargada (solo completa la vacía). SECURITY DEFINER para leer el mapeo sin
+--     depender de la RLS del rol que hace el insert (importador del Excel/anon).
+--
+--  Bootstrap (1 vez): se pobló Zonas_Barrios del histórico
+--    insert into "Zonas_Barrios"(barrio_norm,zona)
+--      select _norm_barrio(barrio), max(btrim(zona)) from "PPP_Programacion_Diaria"
+--      where zona<>'' and barrio<>'' group by _norm_barrio(barrio);
+--  y se hizo backfill de los pedidos viejos sin zona cuyo barrio ya estaba mapeado.
+--
+--  Flujo de mantenimiento: barrio NUEVO (no mapeado) → el pedido queda sin zona →
+--  salta la alerta `ppp_sin_zona` (ver ppp_sin_zona.sql) → se agrega ese barrio UNA
+--  vez a Zonas_Barrios (insert) y de ahí en más es automático. (Pendiente opcional:
+--  mini-UI admin para asignar zona a barrios nuevos sin tocar SQL.)
+--
+--  Migraciones aplicadas: `ppp_autozona_barrio` (tabla+trigger) +
+--  `ppp_autozona_normaliza_tildes` (_norm_barrio sin tildes + trigger).
+-- =====================================================================

@@ -1,0 +1,60 @@
+-- =====================================================================
+--  nc_devoluciones.sql — NC de devoluciones (#31): ingesta + confirmación + stock
+--
+--  Objetivo: las Notas de Crédito (NC) que aparecen en las carpetas de ISIS se
+--  controlan y ajustan el stock de Loeke/Chef, con confirmación de Marianela.
+--
+--  ── DOS PARTES ──────────────────────────────────────────────────────────────────
+--  (A) AGENTE LOCAL (corre en el DESKTOP del dueño — el sandbox NO ve el X:\):
+--      lee X:\PDF_ISIS (Loeke) y X:\PDF_ISISCHEF (Chef), parsea cada NC y la SUBE a
+--      Supabase como `estado='pendiente'`. NO mueve stock (eso lo hace la confirmación).
+--  (B) APP (esta) — Marianela ve las NC pendientes en el módulo de remitos y las
+--      CONFIRMA → recién ahí se ajusta el stock (vía RPC SECURITY DEFINER).
+--
+--  ── ESTRUCTURA DE LAS NC (leída de 2 PDFs reales) ───────────────────────────────
+--  • N.Cred. Compra A (proveedor le acredita a Loeke, ej. TIERRA NATIVA SA):
+--      header: Fecha, Proveedor (cod+nombre), Número, Total.
+--      items:  Artículo (936E, 955E…) · Descripción · Cantidad (caja N.00) · Importe.
+--      → códigos DIRECTOS (ya son el código de góndola). stock_dir = 'baja' (devuelve
+--        mercadería al proveedor → sale de su stock).
+--  • NC Electrónica/Venta A (cliente DEVUELVE a Loeke, ej. DEVOTO):
+--      header: Loekemeyer Hnos (emisor) · Cliente Nº+nombre · Nº (0006-00001821) · Total.
+--      items:  Cod. Art (585EL, 816EL, 819EL) · Descripción · Cant.Caja · $xUnidad · Total.
+--      → códigos con SUFIJO 'L' → strip → 585E/816E/819E (están en góndola). stock_dir
+--        = 'alta' (la mercadería vuelve al stock).
+--
+--  ── PARSEO (lo hace el agente del desktop; pseudo-mapa de campos) ───────────────
+--   division : 'loeke'  si vino de PDF_ISIS · 'chef' si vino de PDF_ISISCHEF.
+--   tipo     : 'compra' si el archivo/título dice "N.Cred. Compra" · 'venta' si "NC
+--              Electrónica"/"Nota de Crédito" de venta.
+--   numero   : el N° del comprobante (string, conservar tal cual).
+--   fecha    : DD/MM/AAAA → date.
+--   contraparte : proveedor (compra) o "ClienteNº Nombre" (venta).
+--   total    : el Total del comprobante.
+--   items[]  : por línea → { cod_raw, cod_art, descripcion, cajas, unidades, importe }
+--              cod_art = normalizar cod_raw: upper, sin ceros a la izquierda, y en VENTA
+--              sacar la 'L' final (585EL→585E). cajas = la "Cantidad caja".
+--   huella   : division||'|'||tipo||'|'||numero  (UNIQUE → re-subir el mismo PDF NO
+--              duplica; usar upsert on conflict (huella)).
+--
+--  ── TABLAS (ya creadas, migración comprobantes_nc_tables) ───────────────────────
+--   Comprobantes_NC( id, division, tipo, numero, fecha, contraparte, total, stock_dir,
+--     estado['pendiente'], archivo, huella UNIQUE, creado_at, confirmado_at, confirmado_por )
+--   Comprobantes_NC_Items( id, nc_id→NC, cod_raw, cod_art, descripcion, cajas, unidades, importe )
+--   RLS: anon select+insert (el agente sube, la app lee). Confirmar = RPC (no UPDATE abierto).
+--
+--  ── INGESTA (lo que hace el agente, vía PostgREST con la anon key) ──────────────
+--   POST /rest/v1/Comprobantes_NC?on_conflict=huella  (Prefer: resolution=merge-duplicates,
+--        return=representation)  → devuelve el id; luego POST de los items con ese nc_id.
+--   (o una RPC de ingesta atómica nc_ingest(jsonb) si se prefiere — TBD.)
+--
+--  ── CONFIRMACIÓN + STOCK (PENDIENTE de definir 2 cosas con el dueño) ────────────
+--   RPC nc_confirmar(p_id, p_estado, p_por): set estado + (si confirmado) por cada item
+--   inserta en Movimientos_Stock: deposito='terminado', delta = (stock_dir='alta'? +cajas
+--   : -cajas), tipo='nc', ref = numero, legajo='0'. Dedup por (tipo='nc', ref=numero).
+--   ⚠ DECISIONES ABIERTAS:
+--     1) NC Venta (cliente devuelve) → ¿ALTA de stock? (asumido sí).
+--     2) Chef (PDF_ISISCHEF): ¿el stock de Chef se ajusta en ESTA app (Movimientos_Stock)
+--        o va en otro sistema? (Loeke = Virgilio = esta app; Chef = ¿?).
+--   El cuerpo de nc_confirmar se aplica cuando se confirmen esas 2.
+-- =====================================================================

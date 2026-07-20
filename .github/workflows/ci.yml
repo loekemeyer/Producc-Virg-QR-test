@@ -1,0 +1,30 @@
+name: CI — smoke tests
+
+# Red de seguridad para que un commit roto NO salga a GitHub Pages en blanco.
+# Corre la misma suite que `tests/run.sh`: sintaxis del sw.js, sintaxis de TODOS
+# los <script> inline del index.html (lo que más rompe), y un smoke headless con
+# Playwright (funciones clave existen, sin errores de página).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      # 0 => Playwright guarda/busca los browsers dentro de node_modules (portable).
+      # tests/run.sh respeta esta variable (no cae al path /opt del sandbox).
+      PLAYWRIGHT_BROWSERS_PATH: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Instalar Playwright + Chromium
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Correr la suite de smoke-tests
+        run: bash tests/run.sh

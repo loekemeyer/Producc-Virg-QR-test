@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monitor Fichadas Esnaola — Virgilio</title>
+  <style>
+    /* ============================================================
+       Estética estilo Google Sheets: gridlines finas grises, headers
+       de columna en gris claro, secciones en gris medio centradas.
+       Pensado para TV (32") y desktop. Responsivo para mobile abajo.
+       ============================================================ */
+    :root {
+      --grid: #bdbdbd;
+      --grid-strong: #757575;
+      --bg: #f5f5f5;
+      --bg-card: #ffffff;
+      --bg-section: #d0d0d0;
+      --bg-section-virgilio: #c8e6c9;     /* verde clarito para resaltar Virgilio */
+      --bg-header: #ecebeb;
+      --bg-spacer: #f5f5f5;
+      --text: #202124;
+      --text-muted: #5f6368;
+      --accent: #1a73e8;
+      --supabase: #3ecf8e;                 /* color brand de Supabase, marker */
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      padding: 14px 18px 32px;
+    }
+    header {
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(18px, 2vw, 26px);
+      font-weight: 600;
+    }
+    #meta {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    #meta.stale { color: #c2410c; }
+    #meta .dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: #16a34a; margin-right: 4px; vertical-align: middle;
+    }
+    #meta.stale .dot { background: #ea580c; }
+    #manualWrap {
+      font-size: 12px; color: var(--text-muted);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    #manualDate {
+      font: inherit; padding: 3px 6px; border: 1px solid var(--grid);
+      border-radius: 6px; color: var(--text);
+    }
+    #legend {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+    #legend .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-weight: 500; margin-left: 6px;
+      background: rgba(62, 207, 142, 0.15); color: #047857;
+      border: 1px solid rgba(62, 207, 142, 0.4);
+    }
+
+    .wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--grid);
+      overflow-x: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+      font-size: clamp(11px, 1.1vw, 14px);
+    }
+    th, td {
+      border: 1px solid var(--grid);
+      padding: 4px 8px;
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Headers de columnas */
+    thead th {
+      background: var(--bg-header);
+      font-weight: 600;
+      text-align: center;
+      border-color: var(--grid-strong);
+      color: var(--text);
+    }
+    thead th.day-group {
+      background: #e3e3e3;
+      border-bottom: 2px solid var(--grid-strong);
+    }
+    thead th.day-date {
+      background: #efefef;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    /* Section headers (Pellegrini, Esnaola, Virgilio, etc.) */
+    tr.section-row td {
+      background: var(--bg-section);
+      text-align: center;
+      font-weight: 600;
+      font-size: clamp(12px, 1.2vw, 15px);
+      letter-spacing: 0.2px;
+      padding: 6px 8px;
+      color: #1a1a1a;
+    }
+    tr.section-row.virgilio td {
+      background: var(--bg-section-virgilio);
+    }
+    /* Spacer rows */
+    tr.spacer-row td {
+      background: var(--bg-spacer);
+      padding: 0;
+      height: 8px;
+      border-left: none;
+      border-right: none;
+    }
+    /* Employee rows */
+    tr.emp-row td.col-email {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    tr.emp-row td.col-empresa,
+    tr.emp-row td.col-leg {
+      text-align: center;
+      color: var(--text-muted);
+    }
+    tr.emp-row td.col-leg { font-weight: 600; color: var(--text); }
+    tr.emp-row td.col-nombre { font-weight: 500; }
+    tr.emp-row td.col-time {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.95em;
+    }
+    tr.emp-row td.col-time.empty { color: #bdbdbd; }
+    tr.emp-row td.col-sep {
+      background: var(--bg-spacer);
+      border-top: none;
+      border-bottom: none;
+      padding: 0;
+      width: 8px;
+    }
+    thead th.col-sep {
+      background: var(--bg-spacer);
+      border-top: none;
+      border-bottom: none;
+      padding: 0;
+      width: 8px;
+    }
+    /* highlight today's date */
+    thead th.day-date.today { background: #d2e3fc; color: #174ea6; }
+
+    /* col widths para que se vea ordenado */
+    col.col-email   { width: 18%; }
+    col.col-empresa { width: 8%; }
+    col.col-leg     { width: 5%; }
+    col.col-nombre  { width: 13%; }
+    col.col-time    { width: 4.5%; }
+    col.col-sep     { width: 8px; }
+
+    .empty-state {
+      padding: 40px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .error-state {
+      padding: 16px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      border-radius: 6px;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+    footer {
+      margin-top: 16px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    footer a { color: var(--accent); }
+
+    @media (max-width: 700px) {
+      body { padding: 8px; }
+      table { font-size: 10px; }
+      th, td { padding: 3px 4px; }
+      #legend { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Registro de Entradas-Salidas</h1>
+    <span id="meta"><span class="dot"></span>Cargando…</span>
+    <span id="manualWrap">Búsqueda manual: <input type="date" id="manualDate" onchange="load()"></span>
+    <span id="legend">
+      Datos <span class="pill">Supabase</span>
+    </span>
+  </header>
+
+  <div class="wrap">
+    <table id="grid">
+      <colgroup>
+        <col class="col-email" />
+        <col class="col-empresa" />
+        <col class="col-leg" />
+        <col class="col-nombre" />
+        <col class="col-time" /><col class="col-time" /><col class="col-time" /><col class="col-time" />
+        <col class="col-sep" />
+        <col class="col-time" /><col class="col-time" /><col class="col-time" /><col class="col-time" />
+        <col class="col-sep" />
+        <col class="col-time" /><col class="col-time" /><col class="col-time" /><col class="col-time" />
+      </colgroup>
+      <thead id="grid-head"></thead>
+      <tbody id="grid-body">
+        <tr><td colspan="18" class="empty-state">Cargando datos…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    Tiempos desde <b>Fichadas_Historico</b> y estructura desde <b>Fichadas_Estructura</b> (Supabase).
+    La sincronización del Google Form (respuestas) y del roster (pivot) corre <b>del lado servidor</b>
+    (pg_cron cada 2 / 10 min). El monitor no lee Google. Refresh cada 60s.
+  </footer>
+
+  <script>
+    // ============================================================
+    // Monitor de Fichadas — 100% Supabase (v5.34)
+    // ------------------------------------------------------------
+    // Tiempos: tabla Fichadas_Historico (indexada por email).
+    // Estructura (secciones, roster, empresas, legajos, nombres):
+    //   tabla Fichadas_Estructura.
+    //
+    // Ya NO se lee ninguna hoja de Google desde el navegador. Las
+    // dos hojas (respuestas del Google Form y el pivot con el roster)
+    // se sincronizan a Supabase del lado SERVIDOR con pg_cron +
+    // la extensión http de Postgres:
+    //   - sync_fichadas_respuestas()  -> Fichadas_Historico (cada 2')
+    //   - sync_fichadas_estructura()  -> Fichadas_Estructura (cada 10')
+    //
+    // Las fechas Hoy / Día Anterior se calculan acá (hora AR); la
+    // "Búsqueda Manual" es el <input type=date> del encabezado.
+    // ============================================================
+
+    const REFRESH_MS = 60000;
+
+    const SUPABASE_URL = "https://hrxfctzncixxqmpfhskv.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_BqpAgZH6ty-9wft10_YMhw_0rcIPuWT";
+    const HISTORICO_ENDPOINT   = SUPABASE_URL + "/rest/v1/Fichadas_Historico";
+    const ESTRUCTURA_ENDPOINT  = SUPABASE_URL + "/rest/v1/Fichadas_Estructura";
+    const SUPABASE_HEADERS = {
+      "apikey":        SUPABASE_KEY,
+      "Authorization": "Bearer " + SUPABASE_KEY
+    };
+
+    let lastOkTs = null;
+
+    // ---- Fechas en hora Argentina (UTC-3 fijo) ----
+    function ymdAR(ms)   { return new Date(ms - 3 * 3600 * 1000).toISOString().slice(0, 10); }
+    function fmtDMY(ymd) { if (!ymd) return "—"; const p = ymd.split("-"); return p[2] + "/" + p[1] + "/" + p[0].slice(2); }
+
+    // ---- Estructura (roster) desde Supabase, cacheada 5 min ----
+    let _structCache = null;
+    let _structCacheTs = 0;
+    const STRUCT_TTL = 5 * 60 * 1000;
+    async function getStructure() {
+      const now = Date.now();
+      if (_structCache && now - _structCacheTs < STRUCT_TTL) return _structCache;
+      const url = ESTRUCTURA_ENDPOINT +
+        "?select=orden,tipo,seccion,email,empresa,leg,nombre,es_virgilio" +
+        "&order=orden.asc&limit=5000";
+      const r = await fetch(url, { headers: SUPABASE_HEADERS, cache: "no-store" });
+      if (!r.ok) throw new Error("Fichadas_Estructura HTTP " + r.status);
+      const rows = await r.json();
+      const items = rows.map(row => {
+        if (row.tipo === "spacer") return { type: "spacer" };
+        if (row.tipo === "section") return { type: "section", text: row.seccion || "", isVirgilio: !!row.es_virgilio };
+        return {
+          type: "emp",
+          email: row.email || "",
+          empresa: row.empresa || "",
+          legSheet: row.leg || "",
+          nombre: row.nombre || "",
+          isVirgilio: !!row.es_virgilio
+        };
+      });
+      _structCache = { items };
+      _structCacheTs = now;
+      return _structCache;
+    }
+
+    // Trae para un dia (YYYY-MM-DD) un mapa email -> { entrada, ci, ct, salida }
+    // con objetos Date (o null). Lee Fichadas_Historico indexado por email.
+    async function fetchSupabaseTimesForDate(dateStr) {
+      if (!dateStr) return new Map();
+      const dayStart = new Date(dateStr + "T00:00:00-03:00").toISOString();
+      const dayEnd   = new Date(dateStr + "T23:59:59-03:00").toISOString();
+
+      const url = HISTORICO_ENDPOINT +
+        "?ts_evento=gte." + encodeURIComponent(dayStart) +
+        "&ts_evento=lte." + encodeURIComponent(dayEnd) +
+        "&order=ts_evento.asc" +
+        "&limit=10000" +
+        "&select=email,evento,ts_evento";
+
+      const r = await fetch(url, { headers: SUPABASE_HEADERS });
+      if (!r.ok) throw new Error("Historico HTTP " + r.status);
+      const data = await r.json();
+
+      const byEmail = new Map();
+      const row = (em) => {
+        const k = String(em).toLowerCase().trim();
+        if (!byEmail.has(k)) byEmail.set(k, { entrada: null, ci: null, ct: null, salida: null });
+        return byEmail.get(k);
+      };
+
+      for (const ev of data) {
+        if (!ev.email) continue;
+        const r0 = row(ev.email);
+        const t = new Date(ev.ts_evento);
+        switch (ev.evento) {
+          case "Entrada":       if (!r0.entrada || t < r0.entrada) r0.entrada = t; break;
+          case "Comida Inicia": if (!r0.ci      || t < r0.ci)      r0.ci      = t; break;
+          case "Comida Termina":if (!r0.ct      || t > r0.ct)      r0.ct      = t; break;
+          case "Salida":        if (!r0.salida  || t > r0.salida)  r0.salida  = t; break;
+        }
+      }
+      return byEmail;
+    }
+
+    async function load() {
+      const meta = document.getElementById("meta");
+      try {
+        // 1) Estructura (roster) desde Supabase (cacheada 5 min)
+        const struct = await getStructure();
+
+        // 2) Fechas: Hoy y Día Anterior en hora AR; Manual = input
+        const manualVal = (document.getElementById("manualDate") || {}).value || "";
+        const dates = {
+          hoy:      ymdAR(Date.now()),
+          anterior: ymdAR(Date.now() - 86400000),
+          manual:   manualVal || null
+        };
+        const parsed = {
+          labels:   { hoy: "Hoy", anterior: "Día Anterior", manual: "Búsqueda Manual" },
+          dates:    dates,
+          rawDates: { hoy: fmtDMY(dates.hoy), anterior: fmtDMY(dates.anterior), manual: fmtDMY(dates.manual) },
+          items:    struct.items
+        };
+
+        // 3) Leer Fichadas_Historico para las fechas visibles (paralelo)
+        const sbResults = await Promise.all([
+          fetchSupabaseTimesForDate(dates.hoy),
+          fetchSupabaseTimesForDate(dates.anterior),
+          dates.manual ? fetchSupabaseTimesForDate(dates.manual) : Promise.resolve(new Map())
+        ]);
+        const sbByDate = { hoy: sbResults[0], anterior: sbResults[1], manual: sbResults[2] };
+
+        // 4) Render
+        render(parsed, sbByDate);
+
+        lastOkTs = Date.now();
+        meta.classList.remove("stale");
+        meta.innerHTML = `<span class="dot"></span>Actualizado ${nowHHMM()}`;
+      } catch (e) {
+        meta.classList.add("stale");
+        const age = lastOkTs ? Math.round((Date.now() - lastOkTs) / 1000) + "s" : "—";
+        meta.innerHTML = `<span class="dot"></span>Error al actualizar (último OK hace ${age}): ${escapeHtml(e.message || e)}`;
+        console.error("[fichadas-monitor]", e);
+      }
+    }
+
+    // ============================================================
+    // Render
+    // ============================================================
+    function render(parsed, sbByDate) {
+      const head = document.getElementById("grid-head");
+      head.innerHTML = `
+        <tr>
+          <th rowspan="3">EMAIL</th>
+          <th rowspan="3">Empresa</th>
+          <th rowspan="3">Leg</th>
+          <th rowspan="3">NOMBRE</th>
+          <th colspan="4" class="day-group">${escapeHtml(parsed.labels.hoy)}</th>
+          <th rowspan="3" class="col-sep"></th>
+          <th colspan="4" class="day-group">${escapeHtml(parsed.labels.anterior)}</th>
+          <th rowspan="3" class="col-sep"></th>
+          <th colspan="4" class="day-group">${escapeHtml(parsed.labels.manual)}</th>
+        </tr>
+        <tr>
+          <th colspan="4" class="day-date today">${escapeHtml(parsed.rawDates.hoy)}</th>
+          <th colspan="4" class="day-date">${escapeHtml(parsed.rawDates.anterior)}</th>
+          <th colspan="4" class="day-date">${escapeHtml(parsed.rawDates.manual)}</th>
+        </tr>
+        <tr>
+          <th>Entrada</th><th>Comida<br>Inicia</th><th>Comida<br>Termina</th><th>Salida</th>
+          <th>Entrada</th><th>Comida<br>Inicia</th><th>Comida<br>Termina</th><th>Salida</th>
+          <th>Entrada</th><th>Comida<br>Inicia</th><th>Comida<br>Termina</th><th>Salida</th>
+        </tr>`;
+
+      const body = document.getElementById("grid-body");
+      let html = "";
+      for (const it of parsed.items) {
+        if (it.type === "spacer") {
+          html += `<tr class="spacer-row"><td colspan="18"></td></tr>`;
+          continue;
+        }
+        if (it.type === "section") {
+          const cls = it.isVirgilio ? "section-row virgilio" : "section-row";
+          html += `<tr class="${cls}"><td colspan="18">${escapeHtml(it.text)}</td></tr>`;
+          continue;
+        }
+        // emp row — tiempos por email desde Fichadas_Historico
+        const emailKey = String(it.email).toLowerCase().trim();
+        const timesForDate = (d) => sbRowToTimes(sbByDate[d].get(emailKey));
+        const cellsForDate = (d) => {
+          const t = timesForDate(d);
+          const cell = (val) => val
+            ? `<td class="col-time">${escapeHtml(val)}</td>`
+            : `<td class="col-time empty">—</td>`;
+          return cell(t.entrada) + cell(t.ci) + cell(t.ct) + cell(t.salida);
+        };
+        html += `
+          <tr class="emp-row">
+            <td class="col-email">${escapeHtml(it.email)}</td>
+            <td class="col-empresa">${escapeHtml(it.empresa)}</td>
+            <td class="col-leg">${escapeHtml(it.legSheet)}</td>
+            <td class="col-nombre">${escapeHtml(it.nombre)}</td>
+            ${cellsForDate("hoy")}
+            <td class="col-sep"></td>
+            ${cellsForDate("anterior")}
+            <td class="col-sep"></td>
+            ${cellsForDate("manual")}
+          </tr>`;
+      }
+      body.innerHTML = html || `<tr><td colspan="18" class="empty-state">Sin datos.</td></tr>`;
+    }
+    function sbRowToTimes(row) {
+      if (!row) return { entrada: "", ci: "", ct: "", salida: "" };
+      return {
+        entrada: row.entrada ? hhmm(row.entrada) : "",
+        ci:      row.ci      ? hhmm(row.ci)      : "",
+        ct:      row.ct      ? hhmm(row.ct)      : "",
+        salida:  row.salida  ? hhmm(row.salida)  : ""
+      };
+    }
+    function hhmm(d) {
+      if (!(d instanceof Date) || isNaN(d.getTime())) return "";
+      try {
+        return d.toLocaleTimeString("es-AR", {
+          hour: "2-digit", minute: "2-digit",
+          timeZone: "America/Argentina/Buenos_Aires"
+        });
+      } catch (_e) {
+        return d.toISOString().slice(11, 16);
+      }
+    }
+
+    // ============================================================
+    // Helpers
+    // ============================================================
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function nowHHMM() {
+      const d = new Date();
+      return String(d.getHours()).padStart(2, "0") + ":" +
+             String(d.getMinutes()).padStart(2, "0");
+    }
+
+    load();
+    setInterval(load, REFRESH_MS);
+  </script>
+</body>
+</html>

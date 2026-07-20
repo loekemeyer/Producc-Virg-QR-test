@@ -1,0 +1,15 @@
+{
+  "name": "Producción — Selector de planta",
+  "short_name": "Producción",
+  "description": "Elegí la planta (Virgilio o Cervantes) y entrá a su app.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "es-AR",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

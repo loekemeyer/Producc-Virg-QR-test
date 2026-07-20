@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Producción — Elegí tu planta</title>
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Producción">
+  <style>
+    :root{
+      --bg:#0f172a; --card-vir-a:#1e6bd6; --card-vir-b:#1d4ed8;
+      --card-cer-a:#0891b2; --card-cer-b:#0e7490; --ink:#fff;
+    }
+    *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html,body{ margin:0; height:100%; }
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      background:radial-gradient(120% 100% at 50% 0%, #1e293b 0%, var(--bg) 60%);
+      color:var(--ink); min-height:100dvh;
+      padding:calc(env(safe-area-inset-top) + 28px) 18px calc(env(safe-area-inset-bottom) + 24px);
+      display:flex; flex-direction:column;
+    }
+    header{ text-align:center; margin-bottom:22px; }
+    h1{ font-size:25px; font-weight:800; margin:0 0 6px; letter-spacing:-.3px; }
+    .sub{ font-size:15px; color:#94a3b8; margin:0; }
+    .cards{ display:flex; flex-direction:column; gap:16px; flex:1; justify-content:center; max-width:520px; width:100%; margin:0 auto; }
+    .card{
+      display:block; text-decoration:none; color:var(--ink);
+      border-radius:20px; padding:26px 22px; position:relative;
+      box-shadow:0 12px 30px rgba(0,0,0,.35); transition:transform .08s ease;
+      border:1px solid rgba(255,255,255,.10);
+    }
+    .card:active{ transform:scale(.975); }
+    .card.vir{ background:linear-gradient(135deg, var(--card-vir-a), var(--card-vir-b)); }
+    .card.cer{ background:linear-gradient(135deg, var(--card-cer-a), var(--card-cer-b)); }
+    .card-name{ font-size:30px; font-weight:800; margin:0; }
+    .card-desc{ font-size:14px; opacity:.92; margin:6px 0 0; }
+    .card-go{ position:absolute; right:20px; top:50%; transform:translateY(-50%); font-size:30px; opacity:.85; }
+    .badge{
+      position:absolute; top:14px; right:16px; background:rgba(255,255,255,.95); color:#0f172a;
+      font-size:11px; font-weight:800; padding:3px 9px; border-radius:999px; letter-spacing:.3px;
+      display:none;
+    }
+    .card.last .badge{ display:inline-block; }
+    .card.last{ outline:2px solid rgba(255,255,255,.55); outline-offset:2px; }
+    footer{ text-align:center; margin-top:22px; color:#64748b; font-size:12px; line-height:1.5; }
+    .ver{ color:#475569; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>¿Dónde vas a trabajar hoy?</h1>
+    <p class="sub">Elegí tu planta</p>
+  </header>
+
+  <main class="cards">
+    <a class="card vir" id="cardVir" href="../" onclick="recordar('virgilio')">
+      <span class="badge">Última vez</span>
+      <p class="card-name">Virgilio</p>
+      <p class="card-desc">Picking · Armado · Carga de camión · Recepción</p>
+      <span class="card-go">→</span>
+    </a>
+    <a class="card cer" id="cardCer" href="../cervantes/" onclick="recordar('cervantes')">
+      <span class="badge">Última vez</span>
+      <p class="card-name">Cervantes</p>
+      <p class="card-desc">Registro de producción · Matrices · Cajas</p>
+      <span class="card-go">→</span>
+    </a>
+  </main>
+
+  <footer>
+    Podés volver acá cuando quieras para cambiar de planta.<br>
+    <span class="ver">Selector v1.0</span>
+  </footer>
+
+  <script>
+    /* Las dos apps viven en este mismo repo: Virgilio en la raíz (../) y Cervantes
+       en ../cervantes/. El selector solo linkea a esas subcarpetas. */
+    var LS_KEY = "appprod_ultima_planta";
+
+    function recordar(planta){ try { localStorage.setItem(LS_KEY, planta); } catch(e){} }
+    /* Marca con "Última vez" la planta usada la última vez (ayuda visual; NO
+       redirige solo, porque la asignación puede cambiar día a día). */
+    (function(){
+      try {
+        var u = localStorage.getItem(LS_KEY);
+        if (u === "virgilio") document.getElementById("cardVir").classList.add("last");
+        else if (u === "cervantes") document.getElementById("cardCer").classList.add("last");
+      } catch(e){}
+    })();
+    /* Service worker (scope acotado a /selector/). No cachea nada. */
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function(){
+        navigator.serviceWorker.register("sw.js").catch(function(){});
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.loekemeyer.virgilio",
+      "sha256_cert_fingerprints": [
+        "F0:A7:90:29:C1:9F:BB:AB:B4:F7:DB:7D:68:13:76:7F:0C:02:4A:8B:77:C3:49:91:8E:32:9D:98:4A:31:F0:B7",
+        "A6:76:DF:E4:32:BA:83:93:14:E6:A2:D6:D1:C8:9D:10:28:CA:6E:8E:90:5E:00:D2:C3:C3:60:10:A3:CE:95:69"
+      ]
+    }
+  }
+]

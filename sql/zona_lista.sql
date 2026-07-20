@@ -1,0 +1,21 @@
+-- =====================================================================
+--  zona_lista.sql — Alerta "zona lista para programar" (v4.80)
+--
+--  Cuando una ZONA junta >=1 m³ de pedidos PENDIENTES y SIN fecha de entrega,
+--  conviene programar el reparto a esa zona. Va al tablero Agentes (categoria
+--  'zona_lista', una fila por zona) + Telegram (UN mensaje con todas las zonas,
+--  1 vez por semana, dedup). Excluye "Retira" (el cliente retira, no hay reparto).
+--
+--  Helper reporte_agentes_zona_lista(), enganchado al cron 14 (cada 2h) después
+--  de los demás reporte_agentes_*:
+--    select cron.schedule('generar-reporte-agentes','0 */2 * * *',
+--      'select public.generar_reporte_agentes(); ... ; select public.reporte_agentes_zona_lista();');
+--  Cliente: categoria 'zona_lista' agregada al array CATS de agtRender (index.html).
+--  Umbral: 1 m³ (constante en el HAVING). Cuerpo completo aplicado por migración.
+--
+--  ⚠ SEGURIDAD: SECURITY DEFINER + manda Telegram → NO ejecutable por la anon key.
+--  El cron (jobid 14) corre como postgres (conserva EXECUTE). Migración
+--  lock_down_telegram_report_functions (v4.82):
+--    revoke execute on function public.reporte_agentes_zona_lista() from public, anon, authenticated;
+--    grant  execute on function public.reporte_agentes_zona_lista() to service_role;
+-- =====================================================================
