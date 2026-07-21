@@ -2894,24 +2894,18 @@ table.fac-np-tbl tbody tr.fac-tanda-alt:hover td{ background: #f1f5f9; }
   .rmt-close{ background:#e2e8f0; color:#334155; flex:0 0 auto; padding:12px 18px; }
   /* ── Gate de FICHADA QR: lector de QR de ingreso (v5.53) ── */
   #fichadaScan{ display:none; position:fixed; inset:0; z-index:1400; background:#0b1220; color:#e8f0ef; overflow:auto; }
-  #fichadaScan.show{ display:flex; flex-direction:column; }
-  .fqr-head{ padding:16px 16px 6px; text-align:center; }
-  .fqr-head h1{ font-size:20px; font-weight:800; margin:0 0 4px; color:#fff; }
-  .fqr-head p{ font-size:13.5px; color:#94a5a4; margin:0; line-height:1.4; }
-  .fqr-who{ font-size:12.5px; color:#7fdce0; font-weight:700; margin-top:6px; word-break:break-all; }
-  .fqr-stage{ flex:1 1 auto; display:flex; align-items:center; justify-content:center; padding:14px; }
-  .fqr-frame{ position:relative; width:min(78vw,320px); aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#000; box-shadow:0 10px 40px rgba(0,0,0,.5); }
-  .fqr-frame video{ width:100%; height:100%; object-fit:cover; display:block; }
-  .fqr-frame .fqr-reticle{ position:absolute; inset:12%; border:3px solid rgba(127,220,224,.9); border-radius:14px; box-shadow:0 0 0 100vmax rgba(2,6,23,.35); pointer-events:none; }
-  .fqr-msg{ min-height:22px; text-align:center; font-size:14px; font-weight:700; padding:0 18px 6px; }
+  #fichadaScan.show{ display:flex; align-items:center; justify-content:center; padding:24px; }
+  .fqr-box{ text-align:center; max-width:420px; width:100%; display:flex; flex-direction:column; align-items:center; gap:16px; }
+  .fqr-box h1{ font-size:32px; font-weight:800; color:#fff; margin:0; line-height:1.15; }
+  .fqr-box p{ font-size:17px; color:#94a5a4; margin:0; line-height:1.45; }
+  .fqr-msg{ min-height:20px; font-size:15px; font-weight:700; }
   .fqr-msg.ok{ color:#34d399; } .fqr-msg.warn{ color:#f0a44a; } .fqr-msg.bad{ color:#f87171; }
-  .fqr-actions{ padding:6px 18px 26px; display:flex; flex-direction:column; gap:10px; max-width:420px; width:100%; margin:0 auto; }
-  .fqr-btn{ width:100%; border:none; border-radius:12px; font-size:15px; font-weight:800; padding:14px; cursor:pointer; }
-  .fqr-btn.prim{ background:#0d7d84; color:#fff; }
+  .fqr-btn{ width:100%; border:none; border-radius:14px; font-size:16px; font-weight:800; padding:16px; cursor:pointer; }
+  .fqr-btn.prim{ background:#0d7d84; color:#fff; font-size:20px; padding:22px; }
   .fqr-btn.danger{ background:#b91c1c; color:#fff; }
-  .fqr-btn.sec{ background:transparent; color:#94a5a4; font-weight:700; font-size:13.5px; padding:8px; }
+  .fqr-btn.sec{ background:transparent; color:#94a5a4; font-weight:700; font-size:14px; padding:8px; }
   .fqr-btn:disabled{ opacity:.5; cursor:default; }
-  .fqr-badge{ width:78px; height:78px; border-radius:50%; display:grid; place-items:center; margin:10px auto; font-size:40px; }
+  .fqr-badge{ width:88px; height:88px; border-radius:50%; display:grid; place-items:center; margin:0 auto; font-size:46px; }
   .fqr-badge.ok{ background:#12241c; color:#34d399; } .fqr-badge.warn{ background:#241a10; color:#f0a44a; } .fqr-badge.bad{ background:#251316; color:#f87171; }
   .fqr-hidden{ display:none !important; }
 </style>
@@ -3313,20 +3307,15 @@ table.fac-np-tbl tbody tr.fac-tanda-alt:hover td{ background: #f1f5f9; }
      Abre la cámara, decodifica el QR rotativo de la pantalla del trabajo y
      ficha directamente (sin salir de la app). Ver bloque JS más abajo. -->
 <div id="fichadaScan" role="dialog" aria-modal="true">
-  <div class="fqr-head">
-    <h1>Fichá tu ingreso</h1>
-    <p id="fqrSub">Registrá tu ingreso para empezar. Tenés que estar en el WiFi del trabajo.</p>
-    <div class="fqr-who" id="fqrWho"></div>
-  </div>
-  <div class="fqr-stage">
+  <div class="fqr-box">
     <div class="fqr-badge fqr-hidden" id="fqrBadge"></div>
-  </div>
-  <div class="fqr-msg" id="fqrMsg"></div>
-  <div class="fqr-actions">
+    <h1>Fichá tu ingreso</h1>
+    <p id="fqrSub">Tenés que estar conectado al WiFi de la empresa.</p>
+    <div class="fqr-msg" id="fqrMsg"></div>
     <button class="fqr-btn prim" id="fqrFichar" onclick="fichadaFicharAhora()">Fichar ingreso</button>
     <button class="fqr-btn prim fqr-hidden" id="fqrRetry" onclick="fichadaFicharAhora()">Reintentar</button>
     <button class="fqr-btn prim fqr-hidden" id="fqrDone" onclick="fichadaScanContinue()">Continuar</button>
-    <button class="fqr-btn danger" id="fqrNoPuedo" onclick="fichadaNoPuedo()">No puedo fichar</button>
+    <button class="fqr-btn danger fqr-hidden" id="fqrNoPuedo" onclick="fichadaNoPuedo()">No puedo fichar</button>
     <button class="fqr-btn sec fqr-hidden" id="fqrBypass" onclick="fichadaScanBypass()">Entrar igual</button>
     <button class="fqr-btn sec" id="fqrCancel" onclick="fichadaScanClose()">Cancelar</button>
   </div>
@@ -4729,9 +4718,8 @@ function _fqrShow(id) { const e = _fqr(id); if (e) e.classList.remove("fqr-hidde
 
 /* Abre el modal de fichada (lo llama el gate cuando el operario no fichó hoy). */
 function openFichadaScanner(email) {
-  _fqr("fqrWho").textContent = email || "";
   _fqrHide("fqrBadge");
-  _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrBypass"); _fqrShow("fqrNoPuedo"); _fqrShow("fqrCancel");
+  _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrNoPuedo"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
   _fqrMsg("");
   _fqr("fichadaScan").classList.add("show");
 }
@@ -4753,24 +4741,24 @@ async function fichadaFicharAhora() {
     d = await r.json();
   } catch (e) {
     _fichando = false;
-    _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrShow("fqrRetry"); return;
+    _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrShow("fqrRetry"); _fqrShow("fqrNoPuedo"); return;
   }
   _fichando = false;
   if (d && d.ok) { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("¡Ingreso registrado!", d.hora, false); return; }
   if (d && d.error === "ya_ficho") { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("Ya habías fichado hoy", d.hora, true); return; }
   if (d && d.error === "ip_no_permitida") {
-    _fqrMsg("Para fichar tenés que estar conectado al WiFi del trabajo (no datos móviles).", "bad");
-    _fqrShow("fqrRetry"); _fqrShow("fqrBypass"); return;
+    _fqrMsg("No estás en el WiFi de la empresa. Conectate y reintentá.", "bad");
+    _fqrShow("fqrRetry"); _fqrShow("fqrNoPuedo"); return;
   }
   if (d && d.error === "ip_no_configurada") {
     _fqrMsg("Falta configurar la IP del trabajo. Avisá a administración.", "bad");
-    _fqrShow("fqrBypass"); return;
+    _fqrShow("fqrNoPuedo"); return;
   }
   if (d && d.error === "no_habilitado") {
-    _fqrMsg("Tu correo (" + (_fichadaEmail || "—") + ") no está habilitado para fichar. Avisá a administración.", "bad");
-    _fqrShow("fqrBypass"); return;
+    _fqrMsg("Tu correo no está habilitado para fichar. Avisá a administración.", "bad");
+    _fqrShow("fqrNoPuedo"); return;
   }
-  _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrShow("fqrRetry");
+  _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrShow("fqrRetry"); _fqrShow("fqrNoPuedo");
 }
 
 function _fqrSuccess(title, hora, isWarn) {

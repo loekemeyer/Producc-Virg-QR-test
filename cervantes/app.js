@@ -1647,9 +1647,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function _fqrShow(id) { const e = $(id); if (e) e.classList.remove("fqr-hidden"); }
 
   function openFichadaScanner(email) {
-    $("fqrWho").textContent = email || "";
     _fqrHide("fqrBadge");
-    _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrBypass"); _fqrShow("fqrNoPuedo"); _fqrShow("fqrCancel");
+    _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrNoPuedo"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
     _fqrMsg("");
     $("fichadaScan").classList.add("show");
   }
@@ -1669,24 +1668,24 @@ document.addEventListener("DOMContentLoaded", () => {
       d = await r.json();
     } catch (e) {
       _fichando = false;
-      _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrShow("fqrRetry"); return;
+      _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrShow("fqrRetry"); _fqrShow("fqrNoPuedo"); return;
     }
     _fichando = false;
     if (d && d.ok) { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("¡Ingreso registrado!", d.hora, false); return; }
     if (d && d.error === "ya_ficho") { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("Ya habías fichado hoy", d.hora, true); return; }
     if (d && d.error === "ip_no_permitida") {
-      _fqrMsg("Para fichar tenés que estar conectado al WiFi del trabajo (no datos móviles).", "bad");
-      _fqrShow("fqrRetry"); _fqrShow("fqrBypass"); return;
+      _fqrMsg("No estás en el WiFi de la empresa. Conectate y reintentá.", "bad");
+      _fqrShow("fqrRetry"); _fqrShow("fqrNoPuedo"); return;
     }
     if (d && d.error === "ip_no_configurada") {
       _fqrMsg("Falta configurar la IP del trabajo. Avisá a administración.", "bad");
-      _fqrShow("fqrBypass"); return;
+      _fqrShow("fqrNoPuedo"); return;
     }
     if (d && d.error === "no_habilitado") {
-      _fqrMsg("Tu correo (" + (_fichadaEmail || "—") + ") no está habilitado para fichar. Avisá a administración.", "bad");
-      _fqrShow("fqrBypass"); return;
+      _fqrMsg("Tu correo no está habilitado para fichar. Avisá a administración.", "bad");
+      _fqrShow("fqrNoPuedo"); return;
     }
-    _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrShow("fqrRetry");
+    _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrShow("fqrRetry"); _fqrShow("fqrNoPuedo");
   }
 
   function _fqrSuccess(title, hora, isWarn) {

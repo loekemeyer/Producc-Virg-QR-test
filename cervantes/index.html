@@ -86,20 +86,15 @@
        Abre la cámara, decodifica el QR rotativo de la pantalla del trabajo y
        ficha directamente (sin salir de la app). Lógica en app.js. -->
   <div id="fichadaScan" role="dialog" aria-modal="true">
-    <div class="fqr-head">
-      <h1>Fichá tu ingreso</h1>
-      <p id="fqrSub">Registrá tu ingreso para empezar. Tenés que estar en el WiFi del trabajo.</p>
-      <div class="fqr-who" id="fqrWho"></div>
-    </div>
-    <div class="fqr-stage">
+    <div class="fqr-box">
       <div class="fqr-badge fqr-hidden" id="fqrBadge"></div>
-    </div>
-    <div class="fqr-msg" id="fqrMsg"></div>
-    <div class="fqr-actions">
+      <h1>Fichá tu ingreso</h1>
+      <p id="fqrSub">Tenés que estar conectado al WiFi de la empresa.</p>
+      <div class="fqr-msg" id="fqrMsg"></div>
       <button class="fqr-btn prim" id="fqrFichar">Fichar ingreso</button>
       <button class="fqr-btn prim fqr-hidden" id="fqrRetry">Reintentar</button>
       <button class="fqr-btn prim fqr-hidden" id="fqrDone">Continuar</button>
-      <button class="fqr-btn danger" id="fqrNoPuedo">No puedo fichar</button>
+      <button class="fqr-btn danger fqr-hidden" id="fqrNoPuedo">No puedo fichar</button>
       <button class="fqr-btn sec fqr-hidden" id="fqrBypass">Entrar igual</button>
       <button class="fqr-btn sec" id="fqrCancel">Cancelar</button>
     </div>
