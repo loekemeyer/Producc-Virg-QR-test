@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR de ingreso · Producción</title>
+<style>
+  :root{ --bg:#0b1220; --ink:#e8f0ef; --muted:#94a5a4; --accent:#2bb7bf; }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;}
+  h1{font-size:26px;margin:0 0 6px;}
+  p{color:var(--muted);font-size:15px;margin:0 0 20px;max-width:520px;line-height:1.45;}
+  #qr{background:#fff;padding:18px;border-radius:16px;display:inline-block;box-shadow:0 12px 40px rgba(0,0,0,.5);}
+  #qr img{display:block;width:min(72vw,340px);height:auto;image-rendering:pixelated;}
+  .url{margin-top:14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--accent);word-break:break-all;max-width:520px;}
+  .note{margin-top:18px;font-size:13px;color:var(--muted);max-width:520px;line-height:1.5;}
+  @media print{ body{background:#fff;color:#000;} #qr{box-shadow:none;} .note{display:none;} }
+</style>
+</head>
+<body>
+  <h1>Escaneá para fichar</h1>
+  <p>Este QR es <b>fijo</b>: se imprime y se pega en la pared. Te lleva a la app;
+     ahí iniciás sesión y registrás tu ingreso. La fichada solo se acepta desde el
+     <b>WiFi del trabajo</b>.</p>
+  <div id="qr"></div>
+  <div class="url" id="url"></div>
+  <div class="note">Para imprimirlo: <b>Ctrl/Cmd + P</b>. El QR no cambia — no vence
+     ni necesita ninguna pantalla prendida.</div>
+
+<script src="qrcode.js"></script>
+<script>
+  // El QR apunta a la raíz de la app (esta misma carpeta). Al abrirla, el operario
+  // inicia sesión y el gate le pide fichar el ingreso (validado por la IP del WiFi).
+  var URL_APP = location.origin + location.pathname.replace(/qr-fichada\.html$/, "");
+  document.getElementById("url").textContent = URL_APP;
+  try {
+    var qr = qrcode(0, "M");
+    qr.addData(URL_APP);
+    qr.make();
+    document.getElementById("qr").innerHTML = qr.createImgTag(6, 8);
+  } catch (e) {
+    document.getElementById("qr").textContent = "No se pudo generar el QR: " + e;
+  }
+</script>
+</body>
+</html>

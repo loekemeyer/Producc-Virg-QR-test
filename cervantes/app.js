@@ -1594,8 +1594,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const FICHAR_FN    = SUPABASE_URL + "/functions/v1/fichada-qr-fichar";
   const FICHADO_LOCAL_KEY = "cerv_ficho_qr";   // {day, key} → ya ficho hoy (isolado de Virgilio)
   let _fichadaGateCont = null, _fichadaEmail = null, _fichadaFichoKey = null;
-  let _fqrStream = null, _fqrDetector = null, _fqrScanning = false, _fqrTimer = null;
-  let _fqrCanvas = null, _fqrCtx = null, _jsqrLoading = null;
+  let _fichando = false;
 
   function _fichoLocalHoy(key) {
     try {
@@ -1638,187 +1637,76 @@ document.addEventListener("DOMContentLoaded", () => {
     openFichadaScanner(_fichadaEmail);
   }
 
-  /* ─────────── Lector de QR (cámara) ─────────── */
+  /* ─────────── Fichada de ingreso (botón, sin cámara) ───────────
+     El QR de la pared es un LINK a la app; la fichada es ESTE paso. La app se usa
+     solo en el trabajo, así que la presencia la ancla la IP del WiFi de la empresa
+     (chequeo server-side, sin token: modo estático). */
   function _fqrMsg(t, cls) { const m = $("fqrMsg"); if (m) { m.textContent = t || ""; m.className = "fqr-msg" + (cls ? " " + cls : ""); } }
   function _fqrHide(id) { const e = $(id); if (e) e.classList.add("fqr-hidden"); }
   function _fqrShow(id) { const e = $(id); if (e) e.classList.remove("fqr-hidden"); }
 
-  function _ensureJsQR() {
-    if (window.jsQR) return Promise.resolve(true);
-    if (_jsqrLoading) return _jsqrLoading;
-    _jsqrLoading = new Promise(function (res) {
-      const s = document.createElement("script");
-      s.src = "jsqr.min.js?v=" + String(LOCAL_VERSION).replace(/^v/, "");
-      s.onload = function () { res(!!window.jsQR); };
-      s.onerror = function () { res(false); };
-      document.head.appendChild(s);
-    });
-    return _jsqrLoading;
-  }
-
-  function _extractToken(text) {
-    if (!text) return null;
-    const m = String(text).match(/[?&]t=([^&\s]+)/);
-    if (m) { try { return decodeURIComponent(m[1]); } catch (_e) { return m[1]; } }
-    const s = String(text).trim();
-    if (/^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(s)) return s;
-    return null;
-  }
-
-  /* QR ESTÁTICO de fichada (sin token que vence): la presencia la ancla la IP
-     del WiFi del trabajo (chequeo server-side). Reconocemos el QR fijo de fichar. */
-  function _esFichadaEstatica(text) {
-    const s = String(text || "");
-    return /fichar/i.test(s) || /[?&]e=1(?:[&#]|$)/.test(s);
-  }
-
-  async function openFichadaScanner(email) {
+  function openFichadaScanner(email) {
     $("fqrWho").textContent = email || "";
-    $("fqrSub").textContent = "Apunta al QR de la pantalla de fichada del trabajo.";
-    _fqrShow("fqrFrame"); _fqrHide("fqrBadge");
-    _fqrHide("fqrDone"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
-    _fqrMsg("Iniciando cámara…");
+    _fqrHide("fqrBadge");
+    _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
+    _fqrMsg("");
     $("fichadaScan").classList.add("show");
-
-    if (!_fqrCanvas) { _fqrCanvas = document.createElement("canvas"); _fqrCtx = _fqrCanvas.getContext("2d", { willReadFrequently: true }); }
-
-    _fqrDetector = null;
-    try {
-      if ("BarcodeDetector" in window) {
-        let fmts = null;
-        try { fmts = await window.BarcodeDetector.getSupportedFormats(); } catch (_e) {}
-        if (!fmts || fmts.indexOf("qr_code") !== -1) _fqrDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
-      }
-    } catch (_e) { _fqrDetector = null; }
-    if (!_fqrDetector) {
-      const ok = await _ensureJsQR();
-      if (!ok) { _fqrMsg("No pudimos cargar el lector. Fichá desde tu celular escaneando el QR.", "bad"); _fqrShow("fqrBypass"); return; }
-    }
-    _fqrStartCamera();
   }
 
-  async function _fqrStartCamera() {
-    const video = $("fqrVideo");
-    try {
-      _fqrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-    } catch (e) {
-      _fqrMsg("No pudimos abrir la cámara. Dale permiso, o fichá desde tu celular.", "bad");
-      _fqrShow("fqrRetry"); _fqrShow("fqrBypass");
-      return;
-    }
-    video.srcObject = _fqrStream;
-    try { await video.play(); } catch (_e) {}
-    _fqrMsg("Buscando el QR…");
-    _fqrScanning = true;
-    _fqrLoop();
-  }
-
-  async function _fqrLoop() {
-    if (!_fqrScanning) return;
-    const video = $("fqrVideo");
-    let code = null;
-    if (video && video.readyState >= 2 && video.videoWidth) {
-      try {
-        if (_fqrDetector) {
-          const bars = await _fqrDetector.detect(video);
-          if (bars && bars.length) code = bars[0].rawValue;
-        } else if (window.jsQR) {
-          const w = Math.min(video.videoWidth, 640);
-          const h = Math.round(video.videoHeight * (w / video.videoWidth));
-          _fqrCanvas.width = w; _fqrCanvas.height = h;
-          _fqrCtx.drawImage(video, 0, 0, w, h);
-          const img = _fqrCtx.getImageData(0, 0, w, h);
-          const r = window.jsQR(img.data, w, h, { inversionAttempts: "dontInvert" });
-          if (r) code = r.data;
-        }
-      } catch (_e) {}
-    }
-    if (code) {
-      const tok = _extractToken(code);
-      if (tok) { _fqrScanning = false; return _fqrSubmit(tok); }           // rotativo (con token)
-      if (_esFichadaEstatica(code)) { _fqrScanning = false; return _fqrSubmit(null); }  // estático (IP)
-    }
-    if (_fqrScanning) _fqrTimer = setTimeout(_fqrLoop, 130);
-  }
-
-  /* Con `tok` → modo rotativo (token que vence). Sin `tok` (QR estático) → el
-     server valida por la IP del WiFi del trabajo. */
-  async function _fqrSubmit(tok) {
-    _fqrMsg("Registrando fichada…");
+  async function fichadaFicharAhora() {
+    if (_fichando) return;
+    _fichando = true;
+    _fqrHide("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass");
+    _fqrMsg("Registrando ingreso…");
     let d = null;
     try {
       const r = await fetch(FICHAR_FN, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
-        body: JSON.stringify(tok ? { token: tok, email: _fichadaEmail } : { email: _fichadaEmail })
+        body: JSON.stringify({ email: _fichadaEmail })
       });
       d = await r.json();
     } catch (e) {
-      _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrResume(); return;
+      _fichando = false;
+      _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrShow("fqrRetry"); return;
     }
-    if (d && d.ok) { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("¡Fichada registrada!", d.hora, false); return; }
+    _fichando = false;
+    if (d && d.ok) { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("¡Ingreso registrado!", d.hora, false); return; }
     if (d && d.error === "ya_ficho") { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("Ya habías fichado hoy", d.hora, true); return; }
-    if (d && (d.error === "token_vencido" || d.error === "token_usado" || d.error === "token_invalido")) {
-      _fqrMsg("El código venció. Apuntá al QR actual de la pantalla.", "warn"); _fqrResume(); return;
-    }
     if (d && d.error === "ip_no_permitida") {
-      _fqrStop();
       _fqrMsg("Para fichar tenés que estar conectado al WiFi del trabajo (no datos móviles).", "bad");
       _fqrShow("fqrRetry"); _fqrShow("fqrBypass"); return;
     }
     if (d && d.error === "ip_no_configurada") {
-      _fqrStop();
-      _fqrMsg("Falta configurar la IP del trabajo para la fichada. Avisá a administración.", "bad");
+      _fqrMsg("Falta configurar la IP del trabajo. Avisá a administración.", "bad");
       _fqrShow("fqrBypass"); return;
     }
     if (d && d.error === "no_habilitado") {
-      _fqrStop();
       _fqrMsg("Tu correo (" + (_fichadaEmail || "—") + ") no está habilitado para fichar. Avisá a administración.", "bad");
-      _fqrShow("fqrBypass"); _fqrHide("fqrRetry"); return;
+      _fqrShow("fqrBypass"); return;
     }
-    _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrResume();
-  }
-
-  function _fqrResume() {
-    if (!_fqrStream) { _fqrShow("fqrRetry"); return; }
-    _fqrScanning = true;
-    _fqrLoop();
+    _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrShow("fqrRetry");
   }
 
   function _fqrSuccess(title, hora, isWarn) {
-    _fqrStop();
-    _fqrHide("fqrFrame");
     const b = $("fqrBadge");
     b.className = "fqr-badge " + (isWarn ? "warn" : "ok");
     b.textContent = isWarn ? "⏱" : "✓";
     _fqrShow("fqrBadge");
     _fqrMsg(title + (hora ? " · " + hora : ""), isWarn ? "warn" : "ok");
+    _fqrHide("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrCancel");
     _fqrShow("fqrDone");
-    _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrCancel");
   }
 
-  function _fqrStop() {
-    _fqrScanning = false;
-    if (_fqrTimer) { clearTimeout(_fqrTimer); _fqrTimer = null; }
-    try { if (_fqrStream) _fqrStream.getTracks().forEach(function (t) { t.stop(); }); } catch (_e) {}
-    _fqrStream = null;
-    const v = $("fqrVideo"); if (v) { try { v.pause(); } catch (_e) {} v.srcObject = null; }
-  }
+  function _fqrCloseModal() { $("fichadaScan").classList.remove("show"); }
 
-  function _fqrCloseModal() { _fqrStop(); $("fichadaScan").classList.remove("show"); }
-
-  function fichadaScanRetry() {
-    _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrShow("fqrFrame"); _fqrHide("fqrBadge");
-    _fqrMsg("Iniciando cámara…");
-    _fqrStartCamera();
-  }
   function fichadaScanContinue() {
     _fqrCloseModal();
     const cont = _fichadaGateCont; _fichadaGateCont = null;
     if (typeof cont === "function") cont();
   }
   function fichadaScanBypass() {
-    if (!confirm("Vas a entrar sin fichar el ingreso por QR. ¿Continuar igual?")) return;
+    if (!confirm("Vas a entrar sin fichar el ingreso. ¿Continuar igual?")) return;
     _fqrCloseModal();
     const cont = _fichadaGateCont; _fichadaGateCont = null;
     if (typeof cont === "function") cont();
@@ -1827,6 +1715,7 @@ document.addEventListener("DOMContentLoaded", () => {
     _fqrCloseModal();
     _fichadaGateCont = null;
   }
+
 
   function backToLegajo() {
     optionsScreen.classList.add("hidden");
@@ -3474,8 +3363,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* ================= EVENTOS ================= */
   btnContinuar.addEventListener("click", goToOptions);
-  // Botones del lector de fichada QR (v1.8.59).
-  $("fqrRetry")?.addEventListener("click", fichadaScanRetry);
+  // Botones de la fichada de ingreso (v1.8.59).
+  $("fqrFichar")?.addEventListener("click", fichadaFicharAhora);
+  $("fqrRetry")?.addEventListener("click", fichadaFicharAhora);
   $("fqrDone")?.addEventListener("click", fichadaScanContinue);
   $("fqrBypass")?.addEventListener("click", fichadaScanBypass);
   $("fqrCancel")?.addEventListener("click", fichadaScanClose);

@@ -3314,21 +3314,18 @@ table.fac-np-tbl tbody tr.fac-tanda-alt:hover td{ background: #f1f5f9; }
 <div id="fichadaScan" role="dialog" aria-modal="true">
   <div class="fqr-head">
     <h1>Fichá tu ingreso</h1>
-    <p id="fqrSub">Apuntá al QR de la pantalla de fichada del trabajo.</p>
+    <p id="fqrSub">Registrá tu ingreso para empezar. Tenés que estar en el WiFi del trabajo.</p>
     <div class="fqr-who" id="fqrWho"></div>
   </div>
   <div class="fqr-stage">
-    <div class="fqr-frame" id="fqrFrame">
-      <video id="fqrVideo" playsinline muted autoplay></video>
-      <div class="fqr-reticle"></div>
-    </div>
     <div class="fqr-badge fqr-hidden" id="fqrBadge"></div>
   </div>
-  <div class="fqr-msg" id="fqrMsg">Iniciando cámara…</div>
+  <div class="fqr-msg" id="fqrMsg"></div>
   <div class="fqr-actions">
-    <button class="fqr-btn prim fqr-hidden" id="fqrRetry" onclick="fichadaScanRetry()">Reintentar</button>
+    <button class="fqr-btn prim" id="fqrFichar" onclick="fichadaFicharAhora()">Fichar ingreso</button>
+    <button class="fqr-btn prim fqr-hidden" id="fqrRetry" onclick="fichadaFicharAhora()">Reintentar</button>
     <button class="fqr-btn prim fqr-hidden" id="fqrDone" onclick="fichadaScanContinue()">Continuar</button>
-    <button class="fqr-btn sec fqr-hidden" id="fqrBypass" onclick="fichadaScanBypass()">No puedo escanear ahora — entrar igual</button>
+    <button class="fqr-btn sec fqr-hidden" id="fqrBypass" onclick="fichadaScanBypass()">No puedo fichar ahora — entrar igual</button>
     <button class="fqr-btn sec" id="fqrCancel" onclick="fichadaScanClose()">Cancelar</button>
   </div>
 </div>
@@ -4716,193 +4713,73 @@ function backToLegajo() {
   renderLegajoHistory(legajoInput.value);
 }
 
-/* ─────────── Lector de QR de fichada (cámara) ─────────── */
-let _fqrStream = null, _fqrDetector = null, _fqrScanning = false, _fqrTimer = null;
-let _fqrCanvas = null, _fqrCtx = null, _jsqrLoading = null;
-
+/* ─────────── Fichada de ingreso (botón, sin cámara) ───────────
+   El QR de la pared es un LINK a la app; la fichada es ESTE paso. La app se usa
+   solo en el trabajo, así que la presencia la ancla la IP del WiFi de la empresa
+   (chequeo server-side, sin token: modo estático). */
+let _fichando = false;
 function _fqr(id) { return document.getElementById(id); }
 function _fqrMsg(t, cls) { const m = _fqr("fqrMsg"); if (m) { m.textContent = t || ""; m.className = "fqr-msg" + (cls ? " " + cls : ""); } }
 function _fqrHide(id) { const e = _fqr(id); if (e) e.classList.add("fqr-hidden"); }
 function _fqrShow(id) { const e = _fqr(id); if (e) e.classList.remove("fqr-hidden"); }
 
-/* Carga perezosa de jsQR (solo si el navegador no trae BarcodeDetector). */
-function _ensureJsQR() {
-  if (window.jsQR) return Promise.resolve(true);
-  if (_jsqrLoading) return _jsqrLoading;
-  _jsqrLoading = new Promise(function (res) {
-    const s = document.createElement("script");
-    s.src = "jsqr.min.js?v=" + String(APP_VERSION).replace(/^v/, "");
-    s.onload = function () { res(!!window.jsQR); };
-    s.onerror = function () { res(false); };
-    document.head.appendChild(s);
-  });
-  return _jsqrLoading;
-}
-
-/* Del texto del QR saca el token. El QR de la pantalla es
-   ".../fichar.html?t=<token>"; también aceptamos un token pelado. */
-function _extractToken(text) {
-  if (!text) return null;
-  const m = String(text).match(/[?&]t=([^&\s]+)/);
-  if (m) { try { return decodeURIComponent(m[1]); } catch (_e) { return m[1]; } }
-  const s = String(text).trim();
-  if (/^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(s)) return s;   // payload.sig
-  return null;
-}
-
-/* QR ESTÁTICO de fichada (sin token que vence): la prueba de presencia la ancla
-   la IP del WiFi del trabajo (chequeo server-side). Reconocemos el QR de fichar
-   que NO trae ?t= (es un QR fijo que se imprime y se pega en la pared). */
-function _esFichadaEstatica(text) {
-  const s = String(text || "");
-  return /fichar/i.test(s) || /[?&]e=1(?:[&#]|$)/.test(s);
-}
-
-async function openFichadaScanner(email) {
-  // Reset visual del modal.
+/* Abre el modal de fichada (lo llama el gate cuando el operario no fichó hoy). */
+function openFichadaScanner(email) {
   _fqr("fqrWho").textContent = email || "";
-  _fqr("fqrSub").textContent = "Apuntá al QR de la pantalla de fichada del trabajo.";
-  _fqrShow("fqrFrame"); _fqrHide("fqrBadge");
-  _fqrHide("fqrDone"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
-  _fqrMsg("Iniciando cámara…");
+  _fqrHide("fqrBadge");
+  _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
+  _fqrMsg("");
   _fqr("fichadaScan").classList.add("show");
-
-  if (!_fqrCanvas) { _fqrCanvas = document.createElement("canvas"); _fqrCtx = _fqrCanvas.getContext("2d", { willReadFrequently: true }); }
-
-  // Detector nativo si está; si no, jsQR.
-  _fqrDetector = null;
-  try {
-    if ("BarcodeDetector" in window) {
-      let fmts = null;
-      try { fmts = await window.BarcodeDetector.getSupportedFormats(); } catch (_e) {}
-      if (!fmts || fmts.indexOf("qr_code") !== -1) _fqrDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
-    }
-  } catch (_e) { _fqrDetector = null; }
-  if (!_fqrDetector) {
-    const ok = await _ensureJsQR();
-    if (!ok) { _fqrMsg("No pudimos cargar el lector. Fichá desde tu celular escaneando el QR.", "bad"); _fqrShow("fqrBypass"); return; }
-  }
-  _fqrStartCamera();
 }
 
-async function _fqrStartCamera() {
-  const video = _fqr("fqrVideo");
-  try {
-    _fqrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-  } catch (e) {
-    _fqrMsg("No pudimos abrir la cámara. Dale permiso, o fichá desde tu celular.", "bad");
-    _fqrShow("fqrRetry"); _fqrShow("fqrBypass");
-    return;
-  }
-  video.srcObject = _fqrStream;
-  try { await video.play(); } catch (_e) {}
-  _fqrMsg("Buscando el QR…");
-  _fqrScanning = true;
-  _fqrLoop();
-}
-
-async function _fqrLoop() {
-  if (!_fqrScanning) return;
-  const video = _fqr("fqrVideo");
-  let code = null;
-  if (video && video.readyState >= 2 && video.videoWidth) {
-    try {
-      if (_fqrDetector) {
-        const bars = await _fqrDetector.detect(video);
-        if (bars && bars.length) code = bars[0].rawValue;
-      } else if (window.jsQR) {
-        const w = Math.min(video.videoWidth, 640);
-        const h = Math.round(video.videoHeight * (w / video.videoWidth));
-        _fqrCanvas.width = w; _fqrCanvas.height = h;
-        _fqrCtx.drawImage(video, 0, 0, w, h);
-        const img = _fqrCtx.getImageData(0, 0, w, h);
-        const r = window.jsQR(img.data, w, h, { inversionAttempts: "dontInvert" });
-        if (r) code = r.data;
-      }
-    } catch (_e) {}
-  }
-  if (code) {
-    const tok = _extractToken(code);
-    if (tok) { _fqrScanning = false; return _fqrSubmit(tok); }           // rotativo (con token)
-    if (_esFichadaEstatica(code)) { _fqrScanning = false; return _fqrSubmit(null); }  // estático (IP)
-  }
-  if (_fqrScanning) _fqrTimer = setTimeout(_fqrLoop, 130);
-}
-
-/* Envía la fichada. Con `tok` → modo rotativo (token que vence). Sin `tok`
-   (QR estático) → el server valida por la IP del WiFi del trabajo. */
-async function _fqrSubmit(tok) {
-  _fqrMsg("Registrando fichada…");
+/* Manda la fichada. Modo estático: sin token, el server valida por la IP del
+   WiFi del trabajo (fichadaqr_fichar_directo). */
+async function fichadaFicharAhora() {
+  if (_fichando) return;
+  _fichando = true;
+  _fqrHide("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass");
+  _fqrMsg("Registrando ingreso…");
   let d = null;
   try {
     const r = await fetch(FICHADA_QR_FICHAR_FN, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
-      body: JSON.stringify(tok ? { token: tok, email: _fichadaEmail } : { email: _fichadaEmail })
+      body: JSON.stringify({ email: _fichadaEmail })
     });
     d = await r.json();
   } catch (e) {
-    _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrResume(); return;
+    _fichando = false;
+    _fqrMsg("Sin conexión. Reintentá.", "bad"); _fqrShow("fqrRetry"); return;
   }
-  if (d && d.ok) { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("¡Fichada registrada!", d.hora, false); return; }
+  _fichando = false;
+  if (d && d.ok) { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("¡Ingreso registrado!", d.hora, false); return; }
   if (d && d.error === "ya_ficho") { _marcarFichadoLocal(_fichadaFichoKey || _fichadaEmail); _fqrSuccess("Ya habías fichado hoy", d.hora, true); return; }
-  if (d && (d.error === "token_vencido" || d.error === "token_usado" || d.error === "token_invalido")) {
-    _fqrMsg("El código venció. Apuntá al QR actual de la pantalla.", "warn"); _fqrResume(); return;
-  }
   if (d && d.error === "ip_no_permitida") {
-    _fqrStop();
     _fqrMsg("Para fichar tenés que estar conectado al WiFi del trabajo (no datos móviles).", "bad");
     _fqrShow("fqrRetry"); _fqrShow("fqrBypass"); return;
   }
   if (d && d.error === "ip_no_configurada") {
-    _fqrStop();
-    _fqrMsg("Falta configurar la IP del trabajo para la fichada. Avisá a administración.", "bad");
+    _fqrMsg("Falta configurar la IP del trabajo. Avisá a administración.", "bad");
     _fqrShow("fqrBypass"); return;
   }
   if (d && d.error === "no_habilitado") {
-    _fqrStop();
     _fqrMsg("Tu correo (" + (_fichadaEmail || "—") + ") no está habilitado para fichar. Avisá a administración.", "bad");
-    _fqrShow("fqrBypass"); _fqrHide("fqrRetry"); return;
+    _fqrShow("fqrBypass"); return;
   }
-  _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrResume();
-}
-
-/* Sigue escaneando (token vencido / error recuperable): la cámara queda viva. */
-function _fqrResume() {
-  if (!_fqrStream) { _fqrShow("fqrRetry"); return; }
-  _fqrScanning = true;
-  _fqrLoop();
+  _fqrMsg("No se pudo fichar. Reintentá.", "bad"); _fqrShow("fqrRetry");
 }
 
 function _fqrSuccess(title, hora, isWarn) {
-  _fqrStop();
-  _fqrHide("fqrFrame");
   const b = _fqr("fqrBadge");
   b.className = "fqr-badge " + (isWarn ? "warn" : "ok");
   b.textContent = isWarn ? "⏱" : "✓";
   _fqrShow("fqrBadge");
   _fqrMsg(title + (hora ? " · " + hora : ""), isWarn ? "warn" : "ok");
+  _fqrHide("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrCancel");
   _fqrShow("fqrDone");
-  _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrCancel");
 }
 
-/* Corta la cámara y el loop (no cierra el modal). */
-function _fqrStop() {
-  _fqrScanning = false;
-  if (_fqrTimer) { clearTimeout(_fqrTimer); _fqrTimer = null; }
-  try { if (_fqrStream) _fqrStream.getTracks().forEach(function (t) { t.stop(); }); } catch (_e) {}
-  _fqrStream = null;
-  const v = _fqr("fqrVideo"); if (v) { try { v.pause(); } catch (_e) {} v.srcObject = null; }
-}
-
-function _fqrCloseModal() { _fqrStop(); _fqr("fichadaScan").classList.remove("show"); }
-
-/* Reintentar (cámara falló o resultado sin token). */
-function fichadaScanRetry() {
-  _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrShow("fqrFrame"); _fqrHide("fqrBadge");
-  _fqrMsg("Iniciando cámara…");
-  _fqrStartCamera();
-}
+function _fqrCloseModal() { _fqr("fichadaScan").classList.remove("show"); }
 
 /* Fichó OK → cerrar y entrar a la app. */
 function fichadaScanContinue() {
@@ -4911,10 +4788,9 @@ function fichadaScanContinue() {
   if (typeof cont === "function") cont();
 }
 
-/* No puede escanear (cámara rota / correo no habilitado): entra igual, con aviso.
-   Fail-open a propósito — no trabar el turno. */
+/* No pudo fichar (misconfig / sin red): entra igual, con aviso. Fail-open. */
 function fichadaScanBypass() {
-  if (!confirm("Vas a entrar sin fichar el ingreso por QR. ¿Continuar igual?")) return;
+  if (!confirm("Vas a entrar sin fichar el ingreso. ¿Continuar igual?")) return;
   _fqrCloseModal();
   const cont = _fichadaGateCont; _fichadaGateCont = null;
   if (typeof cont === "function") cont();
@@ -4925,6 +4801,7 @@ function fichadaScanClose() {
   _fqrCloseModal();
   _fichadaGateCont = null;
 }
+
 
 /* Lista de tandas planificadas (Op=SI) del PPP — fetched cuando el operario
    abre EP/TP/AP/TAP/CC para que pueda tocar una en vez de tipearla.

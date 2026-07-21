@@ -88,21 +88,18 @@
   <div id="fichadaScan" role="dialog" aria-modal="true">
     <div class="fqr-head">
       <h1>Fichá tu ingreso</h1>
-      <p id="fqrSub">Apuntá al QR de la pantalla de fichada del trabajo.</p>
+      <p id="fqrSub">Registrá tu ingreso para empezar. Tenés que estar en el WiFi del trabajo.</p>
       <div class="fqr-who" id="fqrWho"></div>
     </div>
     <div class="fqr-stage">
-      <div class="fqr-frame" id="fqrFrame">
-        <video id="fqrVideo" playsinline muted autoplay></video>
-        <div class="fqr-reticle"></div>
-      </div>
       <div class="fqr-badge fqr-hidden" id="fqrBadge"></div>
     </div>
-    <div class="fqr-msg" id="fqrMsg">Iniciando cámara…</div>
+    <div class="fqr-msg" id="fqrMsg"></div>
     <div class="fqr-actions">
+      <button class="fqr-btn prim" id="fqrFichar">Fichar ingreso</button>
       <button class="fqr-btn prim fqr-hidden" id="fqrRetry">Reintentar</button>
       <button class="fqr-btn prim fqr-hidden" id="fqrDone">Continuar</button>
-      <button class="fqr-btn sec fqr-hidden" id="fqrBypass">No puedo escanear ahora — entrar igual</button>
+      <button class="fqr-btn sec fqr-hidden" id="fqrBypass">No puedo fichar ahora — entrar igual</button>
       <button class="fqr-btn sec" id="fqrCancel">Cancelar</button>
     </div>
   </div>
