@@ -988,7 +988,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* ================= OPCIONES ================= */
   const OPTIONS = [
-    { code: "E", desc: "Empece Matriz", row: 1, input: { show: true, label: "Ingresar numero", placeholder: "Ejemplo: 110", validate: /^[0-9]+$/ } },
+    { code: "E", desc: "Empece Matriz", row: 1, input: { show: true, label: "Ingresar numero", placeholder: "Ejemplo: 110", validate: /^[0-9]+$/, inputMode: "numeric" } },
     { code: "C", desc: "Cajon", row: 1, input: { show: true, label: "Ingresar numero", placeholder: "Ejemplo: 1500", validate: /^[0-9]+$/ } },
     { code: "PB", desc: "Pare Bano", row: 2, input: { show: false } },
     { code: "BC", desc: "Busque Cajon", row: 2, input: { show: false } },
@@ -1756,6 +1756,8 @@ document.addEventListener("DOMContentLoaded", () => {
       inputArea.classList.remove("hidden");
       inputLabel.innerText = opt.input.label;
       textInput.placeholder = opt.input.placeholder;
+      // Teclado del celular: numérico cuando la opción lo pide (ej. Empezar matriz).
+      textInput.inputMode = opt.input.inputMode || "text";
     } else {
       inputArea.classList.add("hidden");
       if (cmCerrando) textInput.value = stateSel.lastDowntime.texto || "";
