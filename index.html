@@ -2908,6 +2908,7 @@ table.fac-np-tbl tbody tr.fac-tanda-alt:hover td{ background: #f1f5f9; }
   .fqr-actions{ padding:6px 18px 26px; display:flex; flex-direction:column; gap:10px; max-width:420px; width:100%; margin:0 auto; }
   .fqr-btn{ width:100%; border:none; border-radius:12px; font-size:15px; font-weight:800; padding:14px; cursor:pointer; }
   .fqr-btn.prim{ background:#0d7d84; color:#fff; }
+  .fqr-btn.danger{ background:#b91c1c; color:#fff; }
   .fqr-btn.sec{ background:transparent; color:#94a5a4; font-weight:700; font-size:13.5px; padding:8px; }
   .fqr-btn:disabled{ opacity:.5; cursor:default; }
   .fqr-badge{ width:78px; height:78px; border-radius:50%; display:grid; place-items:center; margin:10px auto; font-size:40px; }
@@ -3325,7 +3326,8 @@ table.fac-np-tbl tbody tr.fac-tanda-alt:hover td{ background: #f1f5f9; }
     <button class="fqr-btn prim" id="fqrFichar" onclick="fichadaFicharAhora()">Fichar ingreso</button>
     <button class="fqr-btn prim fqr-hidden" id="fqrRetry" onclick="fichadaFicharAhora()">Reintentar</button>
     <button class="fqr-btn prim fqr-hidden" id="fqrDone" onclick="fichadaScanContinue()">Continuar</button>
-    <button class="fqr-btn sec fqr-hidden" id="fqrBypass" onclick="fichadaScanBypass()">No puedo fichar ahora — entrar igual</button>
+    <button class="fqr-btn danger" id="fqrNoPuedo" onclick="fichadaNoPuedo()">No puedo fichar</button>
+    <button class="fqr-btn sec fqr-hidden" id="fqrBypass" onclick="fichadaScanBypass()">Entrar igual</button>
     <button class="fqr-btn sec" id="fqrCancel" onclick="fichadaScanClose()">Cancelar</button>
   </div>
 </div>
@@ -3408,6 +3410,8 @@ const SUPABASE_FACTURACION_NP_ENDPOINT =
    ─────────────────────────────────────────────────────────────────────────── */
 const SUPABASE_FICHOHOY_RPC   = SUPABASE_URL + "/rest/v1/rpc/fichadaqr_ficho_hoy";
 const FICHADA_QR_FICHAR_FN    = SUPABASE_URL + "/functions/v1/fichada-qr-fichar";
+// Botón "No puedo fichar": avisa por WhatsApp al encargado (+54 9 11 6252-1635).
+const FICHADA_WA_NUM = "5491162521635";
 
 /* ───────────────────────────────────────────────────────────────────────────
    FUENTE DE DATOS PPP (programación / pedidos / m³). Históricamente sale de
@@ -4727,7 +4731,7 @@ function _fqrShow(id) { const e = _fqr(id); if (e) e.classList.remove("fqr-hidde
 function openFichadaScanner(email) {
   _fqr("fqrWho").textContent = email || "";
   _fqrHide("fqrBadge");
-  _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
+  _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrBypass"); _fqrShow("fqrNoPuedo"); _fqrShow("fqrCancel");
   _fqrMsg("");
   _fqr("fichadaScan").classList.add("show");
 }
@@ -4775,8 +4779,22 @@ function _fqrSuccess(title, hora, isWarn) {
   b.textContent = isWarn ? "⏱" : "✓";
   _fqrShow("fqrBadge");
   _fqrMsg(title + (hora ? " · " + hora : ""), isWarn ? "warn" : "ok");
-  _fqrHide("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrCancel");
+  _fqrHide("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrNoPuedo"); _fqrHide("fqrCancel");
   _fqrShow("fqrDone");
+}
+
+/* Botón rojo "No puedo fichar": abre WhatsApp con un mensaje al encargado
+   avisando quién es el que no puede fichar. Después ofrece "Entrar igual". */
+function fichadaNoPuedo() {
+  let leg = "";
+  try { leg = String((legajoInput && legajoInput.value) || "").trim(); } catch (_e) {}
+  const msg = "Hola, no puedo fichar mi ingreso en Virgilio."
+    + (_fichadaEmail ? " Soy " + _fichadaEmail : "")
+    + (leg ? " (legajo " + leg + ")" : "") + ".";
+  const url = "https://wa.me/" + FICHADA_WA_NUM + "?text=" + encodeURIComponent(msg);
+  try { window.open(url, "_blank"); } catch (_e) { location.href = url; }
+  _fqrMsg("Le avisamos al encargado por WhatsApp.", "warn");
+  _fqrShow("fqrBypass");
 }
 
 function _fqrCloseModal() { _fqr("fichadaScan").classList.remove("show"); }

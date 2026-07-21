@@ -195,6 +195,7 @@ button{
 .fqr-actions{ padding:6px 18px 26px; display:flex; flex-direction:column; gap:10px; max-width:420px; width:100%; margin:0 auto; }
 .fqr-btn{ width:100%; border:none; border-radius:12px; font-size:15px; font-weight:800; padding:14px; cursor:pointer; }
 .fqr-btn.prim{ background:#0d7d84; color:#fff; }
+.fqr-btn.danger{ background:#b91c1c; color:#fff; }
 .fqr-btn.sec{ background:transparent; color:#94a5a4; font-weight:700; font-size:13.5px; padding:8px; }
 .fqr-btn:disabled{ opacity:.5; cursor:default; }
 .fqr-badge{ width:78px; height:78px; border-radius:50%; display:grid; place-items:center; margin:10px auto; font-size:40px; }

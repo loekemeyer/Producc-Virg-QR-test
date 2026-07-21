@@ -1592,6 +1592,7 @@ document.addEventListener("DOMContentLoaded", () => {
      ========================================================================== */
   const FICHOHOY_RPC = SUPABASE_URL + "/rest/v1/rpc/fichadaqr_ficho_hoy";
   const FICHAR_FN    = SUPABASE_URL + "/functions/v1/fichada-qr-fichar";
+  const FICHADA_WA_NUM = "5491162521635";   // "No puedo fichar" → WhatsApp al encargado
   const FICHADO_LOCAL_KEY = "cerv_ficho_qr";   // {day, key} → ya ficho hoy (isolado de Virgilio)
   let _fichadaGateCont = null, _fichadaEmail = null, _fichadaFichoKey = null;
   let _fichando = false;
@@ -1648,7 +1649,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function openFichadaScanner(email) {
     $("fqrWho").textContent = email || "";
     _fqrHide("fqrBadge");
-    _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrBypass"); _fqrShow("fqrCancel");
+    _fqrShow("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrDone"); _fqrHide("fqrBypass"); _fqrShow("fqrNoPuedo"); _fqrShow("fqrCancel");
     _fqrMsg("");
     $("fichadaScan").classList.add("show");
   }
@@ -1694,8 +1695,20 @@ document.addEventListener("DOMContentLoaded", () => {
     b.textContent = isWarn ? "⏱" : "✓";
     _fqrShow("fqrBadge");
     _fqrMsg(title + (hora ? " · " + hora : ""), isWarn ? "warn" : "ok");
-    _fqrHide("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrCancel");
+    _fqrHide("fqrFichar"); _fqrHide("fqrRetry"); _fqrHide("fqrBypass"); _fqrHide("fqrNoPuedo"); _fqrHide("fqrCancel");
     _fqrShow("fqrDone");
+  }
+
+  /* Botón rojo "No puedo fichar": avisa por WhatsApp al encargado y ofrece entrar. */
+  function fichadaNoPuedo() {
+    const leg = legajoKey();
+    const msg = "Hola, no puedo fichar mi ingreso en Cervantes."
+      + (_fichadaEmail ? " Soy " + _fichadaEmail : "")
+      + (leg ? " (legajo " + leg + ")" : "") + ".";
+    const url = "https://wa.me/" + FICHADA_WA_NUM + "?text=" + encodeURIComponent(msg);
+    try { window.open(url, "_blank"); } catch (_e) { location.href = url; }
+    _fqrMsg("Le avisamos al encargado por WhatsApp.", "warn");
+    _fqrShow("fqrBypass");
   }
 
   function _fqrCloseModal() { $("fichadaScan").classList.remove("show"); }
@@ -3365,6 +3378,7 @@ document.addEventListener("DOMContentLoaded", () => {
   btnContinuar.addEventListener("click", goToOptions);
   // Botones de la fichada de ingreso (v1.8.59).
   $("fqrFichar")?.addEventListener("click", fichadaFicharAhora);
+  $("fqrNoPuedo")?.addEventListener("click", fichadaNoPuedo);
   $("fqrRetry")?.addEventListener("click", fichadaFicharAhora);
   $("fqrDone")?.addEventListener("click", fichadaScanContinue);
   $("fqrBypass")?.addEventListener("click", fichadaScanBypass);
