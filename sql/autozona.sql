@@ -27,11 +27,23 @@
 --      where zona<>'' and barrio<>'' group by _norm_barrio(barrio);
 --  y se hizo backfill de los pedidos viejos sin zona cuyo barrio ya estaba mapeado.
 --
---  Flujo de mantenimiento: barrio NUEVO (no mapeado) → el pedido queda sin zona →
---  salta la alerta `ppp_sin_zona` (ver ppp_sin_zona.sql) → se agrega ese barrio UNA
---  vez a Zonas_Barrios (insert) y de ahí en más es automático. (Pendiente opcional:
---  mini-UI admin para asignar zona a barrios nuevos sin tocar SQL.)
+--  Flujo de mantenimiento (barrio NUEVO, no mapeado) — DOS caminos según el Excel:
+--   · Si el Excel TRAE zona (geográfica 'Zona %') → el trigger la APRENDE solo:
+--     inserta barrio→zona en Zonas_Barrios (ON CONFLICT DO NOTHING, el 1º gana) y de
+--     ahí en más deriva automático. Nunca más "sin zona" para ese barrio. NO aprende
+--     Super/Retira/Expo (son TIPO DE CLIENTE, no barrio). Cerró el hueco que dejaba
+--     pedidos con zona-en-Excel pero barrio desconocido (ej. V.Devoto/Villa Bosch):
+--     antes NO saltaba `ppp_sin_zona` (tenían zona) y NADIE aprendía el barrio → el
+--     agrupador del monitor los tiraba a "sin zona".
+--   · Si el Excel viene SIN zona y el barrio es desconocido → no hay nada que derivar
+--     ni aprender → queda sin zona → salta la alerta `ppp_sin_zona` (ver
+--     ppp_sin_zona.sql) por Telegram para que un humano lo cargue.
+--  (Pendiente opcional: mini-UI admin para asignar zona a barrios nuevos sin SQL —
+--   el `⚠ asignar…` de la fila hoy guarda un override LOCAL, no Supabase.)
 --
 --  Migraciones aplicadas: `ppp_autozona_barrio` (tabla+trigger) +
---  `ppp_autozona_normaliza_tildes` (_norm_barrio sin tildes + trigger).
+--  `ppp_autozona_normaliza_tildes` (_norm_barrio sin tildes + trigger) +
+--  `ppp_autozona_aprende_barrio_nuevo` (v6.37: el trigger además APRENDE el barrio
+--  nuevo cuando el Excel trae zona geográfica). Bootstrap del diccionario re-corrido
+--  en v6.37: 26 barrios geográficos que faltaban → 0 barrios geo sin mapear.
 -- =====================================================================

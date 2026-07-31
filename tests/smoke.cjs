@@ -17,15 +17,36 @@ catch (_e) {
   const r = await p.evaluate(() => {
     const need = ["stockComputeSaldos", "stkBodyStocks", "stkBodyStocksTab", "stkBodyConteo", "stkBodyCapacidad", "openAgentesAdmin", "agtRender", "openProductividad", "prodRender",
       "prodCompute", "prodLoad", "prodExportCsv", "prodSetMeta", "_pvPremio", "_pvMetas",
-      "stkBodyProceso", "ocBodyEntregas", "ocgEnter", "insRender", "mgRender", "pkRender", "stockBajaPicking",
-      "stockSepararAFacturar", "stockSalidaFacturado",
+      "stkBodyRacks", "stkRacksCapCompute", "stkRacksCapSummary", "stkPlnSet", "stkPlaniLoad", "stkBodyStocksTab", "stkExportExcedentes",
+      "stkAutoBajadaCompute", "stkAutoBajadaSection", "stkToggleAutoBajada", "stkAutoBajadaGenerar",
+      "opDraftSave", "opDraftLoad", "opDraftClear", "opAskClose", "opDraftResume",
+      "mgAskClose", "rkbAskClose", "insAskClose", "scAskClose", "eaAskClose", "cpAskClose", "rcAskClose",
+      "showMoverModal", "mvRender", "mvPickOrigen", "mvConfirmar", "closeMv", "stkFiltroToggleE",
+      "pppSugerirInline", "pppSugInlineClose", "_pppEsCiudadela",
+      "stkBodyProceso", "ocBodyEntregas", "ocgEnter", "insRender", "mgRender", "mgConfirmar", "pkRender", "stockBajaPicking",
+      "stockSepararAFacturar", "stockSalidaFacturado", "stockMove", "_stockNormRows",
+      "esLegajoPrueba", "esOperadorPrueba", "enqueueReport", "facFetchCajas", "facFaltBadge", "facToggleSoloFalt",
+      "faltPoll", "faltPollStart", "faltDecidePopup", "faltAsignarme", "faltCompletar", "faltYaListo", "faltSoltar",
+      "faltSnoozeId", "faltMaybeCompletar", "faltHtmlPend", "faltHtmlMine", "faltHtmlTaken", "showFaltAvisar", "faltCrear",
+      "facFetchTareas", "facTareaActiva", "facTareaBadge", "_compTandaYaArmada",
+      "getActivityStatus", "tandaReservar", "tandaLiberar",
       "showMGChooser", "showRacksBajarModal", "rkbRender", "rkbConfirmar", "rkbFetchCxM", "rkbSetSec",
+      "showExcModal", "excRender", "excConfirmar", "excSet", "excChg", "excAskClose", "closeExc",
       "showCPModal", "cpRender", "cpConfirm", "cpLoadPickSinArmar", "showInstructivo", "equivResolve", "pppZonaDeBarrio",
       "showRCModal", "rcConfirm", "rcLoadDonors", "showRemitoArmado", "armadoRemitoData", "armadoRemitoInnerHtml", "remitoPrintDoc",
       "openPrintStation", "psToggle", "psPoll", "psTestPrint", "psPrintBatch", "psSeedTodayIfNeeded", "psRender",
       "showEAModal", "eaFetchStock", "eaRender", "eaConfirmar", "eaEmitEvent",
-      "goToOptions", "_enterOptions", "fichadaGate", "openFichadaScanner", "fichadaFicharAhora",
-      "fichadaScanContinue", "fichadaScanClose", "fichadaScanBypass"];
+      "eaFetchUbics", "eaRenderEdit", "eaEditUbic", "eaEditSet", "eaUbicCancel", "eaUbicSave", "eaUbicDelete",
+      "showIngresoRacksModal", "irRender", "irCargar", "irEmitEvent", "irFetchCxM", "irSetCod", "irSetM", "irSetSec", "irSetEmp",
+      "irRevisar", "irRenderConfirm", "irVolver",
+      "stkOpenPedidos", "stkOpenGondola", "stkGondRender", "_stkPopAgg", "_stkFetchNpsByTanda", "stkCapSort",
+      "askPickUbicacion", "emitPickUbic", "askArmadoUbicaciones", "emitArmadoUbic",
+      "pkForzarGondola", "pkEmitRetiroGondola",
+      "pkNpEsLoeke", "pkDualBreakdown", "opDraftSaveQuiet",
+      "emitGuardadoSesion", "stkGRate", "stkGRacksOn", "stkGuardadoToggleRacks", "stkGConfVal",
+      "facFacturarNP", "facFCOpen", "facFCEmitir", "facFCClose", "arcaCall", "facFmtMoney", "facFCEnsureModal",
+      "facNCOpen", "facNCEmitir", "facNCEnsure", "facNCClose",
+      "goToOptions", "_enterOptions", "fichadaGate", "openFichadaScanner", "fichadaFicharAhora", "fichadaScanContinue", "fichadaScanClose", "fichadaScanBypass", "fichadaNoPuedo"];
     const missing = need.filter((n) => typeof window[n] !== "function");
     const ts = new Date().toISOString();
     const sal = stockComputeSaldos([
@@ -34,9 +55,32 @@ catch (_e) {
       { cod_art: "X", deposito: "excedente", delta: 5, tipo: "guardado", ts }
     ], null);
     const saldoOk = !!(sal.X && sal.X.terminado === 80 && sal.X.excedente === 5);
-    return { missing, saldoOk };
+    // Guardado a excedente: filas con claves distintas (una con ubicacion, otra sin)
+    // se deben normalizar al mismo set de claves, si no PostgREST tira 400 y se pierde.
+    const nr = _stockNormRows([
+      { cod_art: "X", deposito: "a_guardar", delta: -5, tipo: "guardado" },
+      { cod_art: "X", deposito: "excedente", delta: 5, tipo: "guardado", ubicacion: "N11" }
+    ]);
+    const normOk = nr.length === 2 && ("ubicacion" in nr[0]) && ("ubicacion" in nr[1]) &&
+      nr[0].ubicacion === null && nr[1].ubicacion === "N11" &&
+      JSON.stringify(Object.keys(nr[0]).sort()) === JSON.stringify(Object.keys(nr[1]).sort());
+    // Candado legajo de prueba: el operador logueado como 0/1 no persiste (v5.68).
+    let pruebaOk = esLegajoPrueba("0") && esLegajoPrueba("1") && !esLegajoPrueba("104") && !esLegajoPrueba("");
+    const li = document.getElementById("legajoInput");
+    if (li) {
+      const orig = li.value;
+      li.value = "0";   pruebaOk = pruebaOk && esOperadorPrueba() === true;
+      li.value = "104"; pruebaOk = pruebaOk && esOperadorPrueba() === false;
+      li.value = orig;
+    } else { pruebaOk = false; }
+    // v6.64: botón "Anular factura (Nota de Crédito)" presente en el bloque de cierre.
+    const ncBtn = Array.from(document.querySelectorAll("button")).find((b) =>
+      (b.getAttribute("onclick") || "").indexOf("facNCOpen") >= 0 ||
+      /Anular factura/i.test(b.textContent || ""));
+    const ncBtnOk = !!ncBtn;
+    return { missing, saldoOk, normOk, pruebaOk, ncBtnOk };
   });
-  const pass = r.missing.length === 0 && r.saldoOk && errs.length === 0;
+  const pass = r.missing.length === 0 && r.saldoOk && r.normOk && r.pruebaOk && r.ncBtnOk && errs.length === 0;
   console.log("smoke:", JSON.stringify(r), "· pageerrors:", errs.length ? errs.join("|") : "none", "·", pass ? "✓ OK" : "✗ FAIL");
   await b.close();
   process.exit(pass ? 0 : 1);

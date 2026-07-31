@@ -208,22 +208,38 @@ begin
          round(extract(epoch from (now() - ap.ts)) / 3600), ap.ts
   from ap left join tap on tap.tanda = ap.tanda
   where tap.tanda is null and ap.ts < now() - interval '24 hours' order by ap.ts limit 20;
-  -- 16) Pipeline atascado: separar_pedidos / a_facturar sin avanzar > 2 días (future-ready)
+  -- 16) Pipeline atascado: mercadería PICKEADA (separar_pedidos / a_facturar) que
+  --     no avanza. Mide por ÚLTIMA actividad (max ts) y en días HÁBILES (lun–vie):
+  --     los operarios no trabajan sáb/dom, así que algo del viernes recién dispara
+  --     el martes. Umbral = Stock_Config.dias_estancado (default 2), el MISMO criterio
+  --     que la alerta Telegram "STOCK ESTANCADO". Antes medía desde la entrada más
+  --     vieja (min) en días corridos → marcaba "hace 28 días" a códigos de alta
+  --     rotación que en realidad se mueven todos los días (falsos positivos).
   insert into public.reporte_agentes (categoria, severidad, titulo, detalle, valor, ts_evento)
   with cfg as (select valor::timestamptz as cutoff from public."Stock_Config" where clave = 'cutoff_ts' limit 1),
+  dcfg as (select greatest(coalesce((select nullif(trim(valor), '')::int from public."Stock_Config" where clave = 'dias_estancado' limit 1), 2), 1) as dias),
   ag as (
-    select m.cod_art, m.deposito, sum(m.delta) as saldo, min(m.ts) filter (where m.delta > 0) as entrada
+    select m.cod_art, m.deposito, sum(m.delta) as saldo, max(m.ts) as ult
     from public."Movimientos_Stock" m left join cfg on true
     where m.deposito in ('separar_pedidos', 'a_facturar') and (cfg.cutoff is null or m.tipo = 'inicial' or m.ts >= cfg.cutoff)
       and coalesce(m.legajo, '') not in ('0', '1')
     group by m.cod_art, m.deposito
+  ),
+  atasc as (
+    select ag.cod_art, ag.deposito, ag.saldo, ag.ult,
+           (select count(*) from generate_series(
+              (ag.ult at time zone 'America/Argentina/Buenos_Aires')::date + 1,
+              (now() at time zone 'America/Argentina/Buenos_Aires')::date,
+              interval '1 day') d
+            where extract(isodow from d) < 6)::int as dh
+    from ag where ag.saldo > 0 and ag.ult is not null
   )
   select 'pipeline_atascado', 'media',
-         ag.cod_art || ' (' || (case ag.deposito when 'separar_pedidos' then 'pickeado' else 'a facturar' end) || ')',
-         'hay ' || round(ag.saldo) || ' cajas sin avanzar hace ' || round(extract(epoch from (now() - ag.entrada)) / 86400) || ' día(s)',
-         round(ag.saldo), ag.entrada
-  from ag where ag.saldo > 0 and ag.entrada is not null and ag.entrada < now() - interval '2 days'
-  order by ag.entrada limit 20;
+         atasc.cod_art || ' (' || (case atasc.deposito when 'separar_pedidos' then 'pickeado' else 'a facturar' end) || ')',
+         'hay ' || round(atasc.saldo) || ' cajas sin que nadie las trabaje hace ' || atasc.dh || ' día(s) hábil(es)',
+         round(atasc.saldo), atasc.ult
+  from atasc, dcfg where atasc.dh >= dcfg.dias
+  order by atasc.dh desc, atasc.saldo desc limit 20;
   -- 17) Excedente estancado: excedente sin moverse > 5 días (future-ready)
   insert into public.reporte_agentes (categoria, severidad, titulo, detalle, valor, ts_evento)
   with cfg as (select valor::timestamptz as cutoff from public."Stock_Config" where clave = 'cutoff_ts' limit 1),

@@ -179,7 +179,6 @@ button{
 
 /* (v1.8.39) Estilos de botones de TEST eliminados. */
 
-/* ── Gate de FICHADA QR: lector de QR de ingreso (v1.8.59) ── */
 #fichadaScan{ display:none; position:fixed; inset:0; z-index:1400; background:#0b1220; color:#e8f0ef; overflow:auto; }
 #fichadaScan.show{ display:flex; align-items:center; justify-content:center; padding:24px; }
 .fqr-box{ text-align:center; max-width:420px; width:100%; display:flex; flex-direction:column; align-items:center; gap:16px; }

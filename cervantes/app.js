@@ -288,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* ================= VERSION (unica fuente de verdad) ================= */
-  const LOCAL_VERSION = "v1.8.59";
+  const LOCAL_VERSION = "v1.8.64";
 
   /* ================= KEYS STORAGE ================= */
   const APP_TAG = "_Cervantes";
@@ -986,6 +986,39 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // (v1.8.60) Deteccion dinamica de variantes de matriz desde la BD.
+  // El input de "Empece Matriz" solo acepta digitos, asi que las matrices con
+  // sufijo de letra (ej: 101 -> 101/101B/101C/101D/101E, 505 -> 505/505B..505F)
+  // son inalcanzables sin un popup. Dado un numero base, junta el codigo base (si
+  // existe como matriz) y todas las N_Matriz = base + letras, y arma el config
+  // para mostrarSelectorVariante usando la descripcion (columna Matriz) como
+  // etiqueta. Devuelve null si el numero no tiene variantes con letra (flujo
+  // normal, sin popup). Las variantes "curadas" (MATRICES_CON_VARIANTE) tienen
+  // prioridad sobre esta deteccion automatica.
+  function detectarVariantesMatriz(base) {
+    const b = String(base || "").trim();
+    if (!/^[0-9]+$/.test(b)) return null;
+    // base seguido SOLO de letras: 101 -> 101B (termina en letras),
+    // pero NO 1010/1011 (les sigue un digito, no una letra).
+    const re = new RegExp("^" + b + "[A-Za-z]+$");
+    const variantes = [];
+    for (const nm of matricesMap.keys()) {
+      if (re.test(nm)) variantes.push(nm);
+    }
+    if (!variantes.length) return null;
+    const codigos = matricesMap.has(b) ? [b, ...variantes] : variantes.slice();
+    codigos.sort((x, y) => {
+      if (x === b) return -1;
+      if (y === b) return 1;
+      return x.localeCompare(y, "es");
+    });
+    const opciones = codigos.map((nm) => {
+      const desc = String(matricesMap.get(nm)?.Matriz || "").trim();
+      return { label: desc ? nm + " - " + desc : nm, matriz: nm, nombre: desc || null };
+    });
+    return { pregunta: "Matriz " + b + " - Elegi la variante:", opciones };
+  }
+
   /* ================= OPCIONES ================= */
   const OPTIONS = [
     { code: "E", desc: "Empece Matriz", row: 1, input: { show: true, label: "Ingresar numero", placeholder: "Ejemplo: 110", validate: /^[0-9]+$/, inputMode: "numeric" } },
@@ -1000,6 +1033,9 @@ document.addEventListener("DOMContentLoaded", () => {
     { code: "PC", desc: "Pare Comida", row: 3, input: { show: false } },
     { code: "RD", desc: "Rollo Fleje Doblado", row: 3, input: { show: false } },
     { code: "MOV P", desc: "Movimiento Piedra", row: 3, input: { show: false } },
+    // (v1.8.59) Movimiento Matriceria: para operarios de piedra que tambien hacen
+    // tareas de matriceria (ej. David Ayala). Se muestra si ve_mm === true.
+    { code: "MM", desc: "Movimiento Matriceria", row: 3, input: { show: false } },
     { code: "CM", desc: "Cambiar Matriz", row: 4, input: { show: true, label: "Numero matriz nueva", placeholder: "Ej: 110", validate: /^[0-9]+$/ } },
     { code: "PM", desc: "Pare Matriz", row: 4, input: { show: false } },
     { code: "RM", desc: "Rotura Matriz", row: 4, input: { show: false } },
@@ -1033,7 +1069,8 @@ document.addEventListener("DOMContentLoaded", () => {
       pr_rd: alimentador,                     // PR + RD = rol Alimentador
       trm: e.ve_trm === true,
       tl: e.ve_tl === true,
-      rem: e.ve_rem === true
+      rem: e.ve_rem === true,
+      mm: e.ve_mm === true       // (v1.8.59) Movimiento Matriceria (piedra + matriceria)
     };
   }
   function puedeCM(legajo) { return capsDe(legajo).cm; }
@@ -1048,6 +1085,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (code === "MOV") return !caps.piedra;
     if (code === "MOV P") return caps.piedra;
+    if (code === "MM") return caps.mm;   // (v1.8.59) piedra que tambien hace matriceria
     if (code === "CM") return caps.cm;
     if (code === "PR" || code === "RD") return caps.pr_rd;
     if (code === "TRM" || code === "TL" || code === "REM") return false;
@@ -1563,10 +1601,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // GATE DE FICHADA QR (v1.8.59): si el operario todavia no ficho su ingreso hoy,
-    // se le pide escanear el QR ANTES de entrar. Si ya ficho (verificado contra
-    // Supabase o recordado localmente), o no se puede verificar (red/correo), entra
-    // normal — nunca se traba el turno. El gate llama a _enterOptions() al pasar.
+    // GATE DE FICHADA QR (v1.8.64): si el operario todavia no ficho su ingreso hoy,
+    // se le pide fichar ANTES de entrar. Ya fichó / sin red → entra normal.
     fichadaGate(leg, function () { _enterOptions(leg); });
   }
 
@@ -1727,7 +1763,6 @@ document.addEventListener("DOMContentLoaded", () => {
     _fqrCloseModal();
     _fichadaGateCont = null;
   }
-
 
   function backToLegajo() {
     optionsScreen.classList.add("hidden");
@@ -2188,10 +2223,13 @@ document.addEventListener("DOMContentLoaded", () => {
         alert("Antes de iniciar una nueva matriz (E), envia al menos 1 Cajon (C).");
         return;
       }
-      if (!matricesMap.has(texto)) {
-        alert(`La matriz ${texto} no existe. Verifica el numero.`);
-        return;
-      }
+      // (v1.8.60) Reset de estado de variante en cada arranque de matriz: asi el
+      // popup vuelve a aparecer para CADA matriz nueva (antes _varianteYaElegida
+      // quedaba pegado en true tras la 1ra matriz con variante y no reaparecia).
+      _varianteYaElegida = false;
+      _nombreMatrizOverride = null;
+      // (La validacion "matriz no existe" se hace mas abajo, junto con la deteccion
+      // de variantes, para no rechazar numeros cuyas unicas variantes tienen letra.)
       // matrices con variante: al iniciar E se elige el tipo (cambia el codigo de matriz)
       const MATRICES_CON_VARIANTE = {
         "12": {
@@ -2254,9 +2292,17 @@ document.addEventListener("DOMContentLoaded", () => {
           ],
         },
       };
-      if (MATRICES_CON_VARIANTE[texto] && !_varianteYaElegida) {
-        const cfg = MATRICES_CON_VARIANTE[texto];
-        const varianteElegida = await mostrarSelectorVariante(cfg.pregunta, cfg.opciones);
+      // (v1.8.60) Config del selector: primero la lista curada (etiquetas a mano);
+      // si el numero base no esta ahi, se detectan las variantes dinamicamente
+      // desde la BD (cualquier N_Matriz = numero base + letras).
+      const cfgVariante = MATRICES_CON_VARIANTE[texto] || detectarVariantesMatriz(texto);
+      // Rechaza solo si el numero no existe como matriz NI tiene variantes con letra.
+      if (!matricesMap.has(texto) && !cfgVariante) {
+        alert(`La matriz ${texto} no existe. Verifica el numero.`);
+        return;
+      }
+      if (cfgVariante && !_varianteYaElegida) {
+        const varianteElegida = await mostrarSelectorVariante(cfgVariante.pregunta, cfgVariante.opciones);
         if (!varianteElegida) return;
         texto = varianteElegida.matriz;
         textInput.value = texto;
@@ -2507,7 +2553,10 @@ document.addEventListener("DOMContentLoaded", () => {
       activos.forEach(b => {
         const opt = document.createElement("option");
         opt.value = String(b.Num);
-        opt.textContent = (b.Tipo || "Balancin") + " " + b.Num;
+        // (v1.8.62) Si Tipo == Num (ej. lugar "Alimentador"), mostrarlo una sola vez.
+        opt.textContent = (String(b.Tipo || "") === String(b.Num))
+          ? String(b.Num)
+          : ((b.Tipo || "Balancin") + " " + b.Num);
         sel.appendChild(opt);
       });
       modal.appendChild(sel);
@@ -2567,8 +2616,15 @@ document.addEventListener("DOMContentLoaded", () => {
   // Reemplaza el auto-seleccionar Cambiar Matriz del flujo Rotura para esas matrices.
   async function popupAlimentadorCajon(legajo, opts) {
     const desdeRotura = !!(opts && opts.desdeRotura);
-    const el = await mostrarSelectorVariante("Cajon cerrado. ¿Que queres hacer?", [
-      { label: "Continuar Produciendo", val: "SEGUIR" },
+    // (v1.8.63) En el flujo de rotura el operario no "sigue produciendo" (la matriz
+    // esta rota): al elegir "No cambiar matriz" vuelve al menu y hace lo que necesite
+    // -un MOV, ordenar cajones, o ir a un balancin (que es un NUEVO E / empezar matriz,
+    // no un MOV)- mientras matriceria saca, repara y recoloca la matriz. Por eso la
+    // etiqueta queda neutra y NO menciona movimientos.
+    const titulo = desdeRotura ? "Rotura registrada. ¿Que queres hacer?" : "Cajon cerrado. ¿Que queres hacer?";
+    const labelSeguir = desdeRotura ? "No cambiar matriz" : "Continuar Produciendo";
+    const el = await mostrarSelectorVariante(titulo, [
+      { label: labelSeguir, val: "SEGUIR" },
       { label: "Cambiar Matriz", val: "CM" }
     ], true);   // sin boton Cancelar: los dos caminos son no destructivos
     if (el && el.val === "CM") {
@@ -2680,6 +2736,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // (v1.8.54) Cierre del flujo Rotura: con CM abre Cambiar Matriz; sin CM termina.
   async function finalizarFlujoRM(legajo) {
     if (puedeCM(legajo)) {
+      // (v1.8.61) Matriz alimentador (Tipo_Matriz='A'): igual que el cierre normal de
+      // cajon, preguntar "Continuar Produciendo / Cambiar Matriz" en vez de forzar el
+      // Cambiar Matriz. Los datos de produccion muestran que tras la rotura el operario
+      // sigue en la MISMA matriz (ej: Eduardo/leg 19 hizo 3 roturas seguidas en la 71
+      // -Tipo A- sin ningun CM). Reutiliza popupAlimentadorCajon (que ya existia justo
+      // para esto pero nunca se habia conectado a este flujo).
+      const s0 = readState(legajo);
+      const matrizRota = s0.pendingRM?.matriz || s0.lastMatrix?.texto || "";
+      if (esAlimentador(matrizRota)) {
+        await popupAlimentadorCajon(legajo, { desdeRotura: true });
+        return;
+      }
       await abrirCambiarMatriz();
       return;
     }
@@ -3377,7 +3445,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* ================= EVENTOS ================= */
   btnContinuar.addEventListener("click", goToOptions);
-  // Botones de la fichada de ingreso (v1.8.59).
+  // Botones de la fichada de ingreso (v1.8.64).
   $("fqrFichar")?.addEventListener("click", fichadaFicharAhora);
   $("fqrNoPuedo")?.addEventListener("click", fichadaNoPuedo);
   $("fqrRetry")?.addEventListener("click", fichadaFicharAhora);
